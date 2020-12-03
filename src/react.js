@@ -1,8 +1,13 @@
 import KeenSlider from './keen-slider'
 import { useEffect, useRef, useState } from 'react'
+import { TOptionsEvents } from '../index'
+
 
 export default KeenSlider
 
+/**
+ * @param {TOptionsEvents} options
+ */
 export function useKeenSlider(options = {}) {
   const ref = useRef()
   const savedOptions = useRef()

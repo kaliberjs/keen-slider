@@ -53,6 +53,7 @@ export type TOptions = {
   spacing?: number
   vertical?: boolean
   inlineBlockMode?: boolean
+  cancelOnLeave?: boolean
 }
 
 export type TEvents = {

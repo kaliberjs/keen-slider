@@ -1,11 +1,121 @@
 import './polyfills'
+import KeenSliderType, { TOptionsEvents } from '../index'
 
-function KeenSlider(initialContainer, initialOptions = {}) {
+const defaultOptions = {
+  centered: false,
+  breakpoints: null,
+  controls: true,
+  dragSpeed: 1,
+  friction: 0.0025,
+  loop: false,
+  initial: 0,
+  duration: 500,
+  preventEvent: 'data-keen-slider-pe',
+  slides: '.keen-slider__slide',
+  vertical: false,
+  resetSlide: false,
+  slidesPerView: 1,
+  spacing: 0,
+  mode: 'snap',
+  rtl: false,
+  rubberband: true,
+  cancelOnLeave: true
+}
+
+/**
+ * @template T
+ * @typedef {(keyof T)[]} ObjectKeys
+ */
+
+/**
+ *
+ * @param {HTMLElement} initialContainer
+ * @param {TOptionsEvents} initialOptions
+ *
+ * @returns {KeenSliderType}
+ */
+export default function PublicKeenSlider(initialContainer, initialOptions = {}) {
+  const { eventAdd, eventsRemove } = EventBookKeeper()
+
+  let breakpointCurrent = null
+  const slider = { current: KeenSlider(initialContainer, initialOptions) }
+
+  sliderInit(initialOptions)
+  return {
+    destroy() {
+      eventsRemove()
+      slider.current.destroy()
+    },
+    resize() {
+      sliderResize(true)
+    },
+    refresh(options) { // this function should probably removed, it might be simpler to just destroy and create a new instance
+      slider.current.destroy()
+      breakpointCurrent = null
+      slider.current = KeenSlider(initialContainer, options || initialOptions)
+    },
+    // temporary construct, forward all methods to the current slider
+    ...pipeMethods(keys(slider.current), slider)
+  }
+
+  function sliderInit(options) {
+    eventsAdd()
+    sliderCheckBreakpoint(options)
+    // sliderCreated = true
+    slider.current.hook('created')
+  }
+
+  function sliderCheckBreakpoint(options) {
+    const breakpoints = options.breakpoints || []
+    let lastValid
+    for (let value in breakpoints) {
+      if (window.matchMedia(value).matches) lastValid = value
+    }
+    if (lastValid === breakpointCurrent) return false
+    breakpointCurrent = lastValid
+    const _options = breakpointCurrent
+      ? breakpoints[breakpointCurrent]
+      : options
+    // TODO: think about the effects of the next line
+    if (_options.breakpoints && breakpointCurrent) delete _options.breakpoints
+    const newOptions = { ...defaultOptions, ...initialOptions, ..._options }
+    // optionsChanged = true
+    // resizeLastWidth = null
+    slider.current.destroy()
+    slider.current = KeenSlider(initialContainer, newOptions)
+    return true
+  }
+
+  function eventsAdd() {
+    // eventAdd(window, 'orientationchange', sliderResizeFix) // should not be needed, fixed by the one below
+    eventAdd(window, 'resize', sliderResize)
+  }
+
+  // function sliderResizeFix(force) {
+  //   sliderResize()
+  //   setTimeout(sliderResize, 500)
+  //   setTimeout(sliderResize, 2000)
+  // }
+
+  function sliderResize(force) {
+    const breakpointChanged = sliderCheckBreakpoint() // note to self: this should not have side effects
+    if (breakpointChanged) return
+    slider.current.resize(force)
+  }
+}
+
+/**
+ *
+ * @param {HTMLElement} initialContainer
+ * @param {TOptionsEvents} options
+ */
+function KeenSlider(initialContainer, options) {
   const attributeMoving = 'data-keen-slider-moves'
   const attributeVertical = 'data-keen-slider-v'
 
-  let container
-  let events = []
+  const { eventAdd, eventsRemove } = EventBookKeeper()
+
+  const [container] = getElements(initialContainer)
   let touchControls
   let length
   let origin
@@ -14,9 +124,8 @@ function KeenSlider(initialContainer, initialOptions = {}) {
   let slidesPerView
   let spacing
   let resizeLastWidth
-  let breakpointCurrent = null
   let optionsChanged = false
-  let sliderCreated = false
+  // let sliderCreated = false
 
   let trackCurrentIdx
   let trackPosition = 0
@@ -26,8 +135,6 @@ function KeenSlider(initialContainer, initialOptions = {}) {
   let trackSpeed
   let trackSlidePositions
   let trackProgress
-
-  let options
 
   // touch/swipe helper
   let touchIndexStart
@@ -49,9 +156,40 @@ function KeenSlider(initialContainer, initialOptions = {}) {
   let moveForceFinish
   let moveCallBack
 
-  function eventAdd(element, event, handler, options = {}) {
-    element.addEventListener(event, handler, options)
-    events.push([element, event, handler, options])
+  const pubfuncs = {
+    controls: active => {
+      touchControls = active
+    },
+    destroy: sliderUnbind,
+    next() {
+      moveToIdx(trackCurrentIdx + 1, true)
+    },
+    prev() {
+      moveToIdx(trackCurrentIdx - 1, true)
+    },
+    moveToSlide(idx, duration) {
+      moveToIdx(idx, true, duration)
+    },
+    moveToSlideRelative(idx, nearest = false, duration) {
+      moveToIdx(idx, true, duration, true, nearest)
+    },
+    details() {
+      return trackGetDetails()
+    },
+    resize: sliderResize,
+    // exposed for now, during refactor
+    hook,
+  }
+
+  sliderInit()
+
+  return pubfuncs
+
+  function sliderInit() {
+    if (!container) return
+    sliderResize(true)
+    eventsAdd()
+    hook('mounted')
   }
 
   function eventDrag(e) {
@@ -159,8 +297,6 @@ function KeenSlider(initialContainer, initialOptions = {}) {
   }
 
   function eventsAdd() {
-    eventAdd(window, 'orientationchange', sliderResizeFix)
-    eventAdd(window, 'resize', () => sliderResize())
     eventAdd(container, 'dragstart', function (e) {
       if (!isTouchable()) return
       e.preventDefault()
@@ -184,13 +320,6 @@ function KeenSlider(initialContainer, initialOptions = {}) {
     eventAdd(window, 'wheel', eventWheel, {
       passive: false,
     })
-  }
-
-  function eventsRemove() {
-    events.forEach(event => {
-      event[0].removeEventListener(event[1], event[2], event[3])
-    })
-    events = []
   }
 
   function hook(hook) {
@@ -250,7 +379,7 @@ function KeenSlider(initialContainer, initialOptions = {}) {
       return
     }
     if (offset !== 0 && isRubberband() && !moveForceFinish) {
-      return moveRubberband(Math.sign(offset))
+      return moveRubberband()
     }
     moved += add
     trackAdd(add, false)
@@ -368,56 +497,16 @@ function KeenSlider(initialContainer, initialOptions = {}) {
     moveAnimate()
   }
 
-  function sliderBind(force_resize) {
-    let _container = getElements(initialContainer)
-    if (!_container.length) return
-    container = _container[0]
-    sliderResize(force_resize)
-    eventsAdd()
-    hook('mounted')
-  }
-
-  function sliderCheckBreakpoint() {
-    const breakpoints = initialOptions.breakpoints || []
-    let lastValid
-    for (let value in breakpoints) {
-      if (window.matchMedia(value).matches) lastValid = value
-    }
-    if (lastValid === breakpointCurrent) return true
-    breakpointCurrent = lastValid
-    const _options = breakpointCurrent
-      ? breakpoints[breakpointCurrent]
-      : initialOptions
-    if (_options.breakpoints && breakpointCurrent) delete _options.breakpoints
-    options = { ...defaultOptions, ...initialOptions, ..._options }
-    optionsChanged = true
-    resizeLastWidth = null
-    sliderRebind()
-  }
-
   function sliderGetSlidesPerView(option) {
     return typeof option === 'function'
       ? option()
       : clampValue(option, 1, Math.max(isLoop() ? length - 1 : length, 1))
   }
 
-  function sliderInit() {
-    sliderCheckBreakpoint()
-    sliderCreated = true
-    hook('created')
-  }
-
-  function sliderRebind(new_options, force_resize) {
-    if (new_options) initialOptions = new_options
-    if (force_resize) breakpointCurrent = null
-    sliderUnbind()
-    sliderBind(force_resize)
-  }
-
   function sliderResize(force) {
     const windowWidth = window.innerWidth
-    if (!sliderCheckBreakpoint() || (windowWidth === resizeLastWidth && !force))
-      return
+    if (windowWidth === resizeLastWidth && !force) return
+
     resizeLastWidth = windowWidth
     const optionSlides = options.slides
     if (typeof optionSlides === 'number') {
@@ -440,7 +529,8 @@ function KeenSlider(initialContainer, initialOptions = {}) {
     slidesSetWidths()
 
     const currentIdx =
-      !sliderCreated || (optionsChanged && options.resetSlide)
+      // !sliderCreated || // this is probably not needed and only here because this method was accidentally called before the init executed
+      (optionsChanged && options.resetSlide)
         ? options.initial
         : trackCurrentIdx
     trackSetPositionByIdx(isLoop() ? currentIdx : trackClampIndex(currentIdx))
@@ -449,12 +539,6 @@ function KeenSlider(initialContainer, initialOptions = {}) {
       container.setAttribute(attributeVertical, true)
     }
     optionsChanged = false
-  }
-
-  function sliderResizeFix(force) {
-    sliderResize()
-    setTimeout(sliderResize, 500)
-    setTimeout(sliderResize, 2000)
   }
 
   function sliderUnbind() {
@@ -681,62 +765,7 @@ function KeenSlider(initialContainer, initialOptions = {}) {
     trackAdd(trackGetIdxDistance(idx), false)
     hook('afterChange')
   }
-
-  const defaultOptions = {
-    centered: false,
-    breakpoints: null,
-    controls: true,
-    dragSpeed: 1,
-    friction: 0.0025,
-    loop: false,
-    initial: 0,
-    duration: 500,
-    preventEvent: 'data-keen-slider-pe',
-    slides: '.keen-slider__slide',
-    vertical: false,
-    resetSlide: false,
-    slidesPerView: 1,
-    spacing: 0,
-    mode: 'snap',
-    rtl: false,
-    rubberband: true,
-    cancelOnLeave: true
-  }
-
-  const pubfuncs = {
-    controls: active => {
-      touchControls = active
-    },
-    destroy: sliderUnbind,
-    refresh(options) {
-      sliderRebind(options, true)
-    },
-    next() {
-      moveToIdx(trackCurrentIdx + 1, true)
-    },
-    prev() {
-      moveToIdx(trackCurrentIdx - 1, true)
-    },
-    moveToSlide(idx, duration) {
-      moveToIdx(idx, true, duration)
-    },
-    moveToSlideRelative(idx, nearest = false, duration) {
-      moveToIdx(idx, true, duration, true, nearest)
-    },
-    resize() {
-      sliderResize(true)
-    },
-    details() {
-      return trackGetDetails()
-    },
-  }
-
-  sliderInit()
-
-  return pubfuncs
 }
-
-export default KeenSlider
 
 // helper functions
 
@@ -758,4 +787,48 @@ function getElements(element, wrapper = document) {
 
 function clampValue(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function EventBookKeeper() {
+  let events = []
+
+  return { eventAdd, eventsRemove }
+
+  function eventAdd(element, event, handler, options = {}) {
+    element.addEventListener(event, handler, options)
+    events.push([element, event, handler, options])
+  }
+
+  function eventsRemove() {
+    events.forEach(event => {
+      event[0].removeEventListener(event[1], event[2], event[3])
+    })
+    events = []
+  }
+}
+
+/**
+ * @template T
+ * @param {T} o
+ *
+ * @returns {ObjectKeys<T>}
+ */
+function keys(o) {
+  // @ts-ignore
+  return Object.keys(o)
+}
+
+/**
+ *
+ * @param {ObjectKeys<ReturnType<KeenSlider>>} keys
+ * @param {{ current: ReturnType<KeenSlider> }} slider
+ *
+ * @returns {ReturnType<KeenSlider>}
+ */
+function pipeMethods(keys, slider) {
+  // @ts-ignore
+  return keys.reduce(
+    (result, method) => ({ ...result, [method]: (...args) => slider.current[method](...args) }),
+    {}
+  )
 }
