@@ -543,17 +543,14 @@ function KeenSlider(initialContainer, options) {
 
   function slidesSetWidths() {
     if (!slides) return
+    const prop = isVertialSlider() ? 'height' : 'width'
     slides.forEach(slide => {
+      // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
       const style = `calc(${100 / slidesPerView}% - ${
         (spacing / slidesPerView) * (slidesPerView - 1)
       }px)`
-      if (isVertialSlider()) {
-        slide.style['min-height'] = style
-        slide.style['max-height'] = style
-      } else {
-        slide.style['min-width'] = style
-        slide.style['max-width'] = style
-      }
+      slide.style[`min-${prop}`] = style
+      slide.style[`max-${prop}`] = style
     })
   }
 
