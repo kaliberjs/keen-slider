@@ -37,10 +37,11 @@ const defaultOptions = {
 export default function PublicKeenSlider(initialContainer, initialOptions = {}) {
   const { eventAdd, eventsRemove } = EventBookKeeper()
 
-  let breakpointCurrent = null
-  const slider = { current: KeenSlider(initialContainer, initialOptions) }
+  let resizeLastWidth = null
+  let breakpointBasedOptions = BreakpointBasedOptions(initialOptions)
+  const slider = { current: KeenSlider(initialContainer, breakpointBasedOptions.options) }
 
-  sliderInit(initialOptions)
+  sliderInit()
   return {
     destroy() {
       eventsRemove()
@@ -49,58 +50,34 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     resize() {
       sliderResize(true)
     },
-    refresh(options) { // this function should probably removed, it might be simpler to just destroy and create a new instance
+    refresh(options) { // this function should probably removed, it is simpler to just destroy and create a new instance
       slider.current.destroy()
-      breakpointCurrent = null
-      slider.current = KeenSlider(initialContainer, options || initialOptions)
+      breakpointBasedOptions = BreakpointBasedOptions(options || initialOptions)
+      slider.current = KeenSlider(initialContainer, breakpointBasedOptions.options)
     },
     // temporary construct, forward all methods to the current slider
     ...pipeMethods(keys(slider.current), slider)
   }
 
-  function sliderInit(options) {
-    eventsAdd()
-    sliderCheckBreakpoint(options)
-    // sliderCreated = true
+  function sliderInit() {
+    eventAdd(window, 'resize', sliderResize)
     slider.current.hook('created')
   }
 
-  function sliderCheckBreakpoint(options) {
-    const breakpoints = options.breakpoints || []
-    let lastValid
-    for (let value in breakpoints) {
-      if (window.matchMedia(value).matches) lastValid = value
+  function sliderResize(force = false) {
+     // checking if a breakpoint matches should not be done on resize, but as a listener to matchMedia
+     // once this switch to matchMedia('...').addListener is complete, you can move functionality out
+     // of this function and the resize function can live inside the slider
+    const { optionsChanged } = breakpointBasedOptions.refresh()
+    if (optionsChanged) {
+      slider.current.destroy()
+      slider.current = KeenSlider(initialContainer, breakpointBasedOptions.options)
+    } else {
+      const windowWidth = window.innerWidth
+      if (!force && windowWidth === resizeLastWidth) return
+      resizeLastWidth = windowWidth
+      slider.current.resize()
     }
-    if (lastValid === breakpointCurrent) return false
-    breakpointCurrent = lastValid
-    const _options = breakpointCurrent
-      ? breakpoints[breakpointCurrent]
-      : options
-    // TODO: think about the effects of the next line
-    if (_options.breakpoints && breakpointCurrent) delete _options.breakpoints
-    const newOptions = { ...defaultOptions, ...initialOptions, ..._options }
-    // optionsChanged = true
-    // resizeLastWidth = null
-    slider.current.destroy()
-    slider.current = KeenSlider(initialContainer, newOptions)
-    return true
-  }
-
-  function eventsAdd() {
-    // eventAdd(window, 'orientationchange', sliderResizeFix) // should not be needed, fixed by the one below
-    eventAdd(window, 'resize', sliderResize)
-  }
-
-  // function sliderResizeFix(force) {
-  //   sliderResize()
-  //   setTimeout(sliderResize, 500)
-  //   setTimeout(sliderResize, 2000)
-  // }
-
-  function sliderResize(force) {
-    const breakpointChanged = sliderCheckBreakpoint() // note to self: this should not have side effects
-    if (breakpointChanged) return
-    slider.current.resize(force)
   }
 }
 
@@ -123,7 +100,6 @@ function KeenSlider(initialContainer, options) {
   let width
   let slidesPerView
   let spacing
-  let resizeLastWidth
   let optionsChanged = false
   // let sliderCreated = false
 
@@ -186,8 +162,8 @@ function KeenSlider(initialContainer, options) {
   return pubfuncs
 
   function sliderInit() {
-    if (!container) return
-    sliderResize(true)
+    if (!container) return // this should probably throw an error
+    sliderResize()
     eventsAdd()
     hook('mounted')
   }
@@ -503,11 +479,7 @@ function KeenSlider(initialContainer, options) {
       : clampValue(option, 1, Math.max(isLoop() ? length - 1 : length, 1))
   }
 
-  function sliderResize(force) {
-    const windowWidth = window.innerWidth
-    if (windowWidth === resizeLastWidth && !force) return
-
-    resizeLastWidth = windowWidth
+  function sliderResize() {
     const optionSlides = options.slides
     if (typeof optionSlides === 'number') {
       slides = null
@@ -529,7 +501,6 @@ function KeenSlider(initialContainer, options) {
     slidesSetWidths()
 
     const currentIdx =
-      // !sliderCreated || // this is probably not needed and only here because this method was accidentally called before the init executed
       (optionsChanged && options.resetSlide)
         ? options.initial
         : trackCurrentIdx
@@ -831,4 +802,37 @@ function pipeMethods(keys, slider) {
     (result, method) => ({ ...result, [method]: (...args) => slider.current[method](...args) }),
     {}
   )
+}
+
+function BreakpointBasedOptions(initialOptions) {
+  let currentBreakpoint = null
+  let options = determineOptions(initialOptions)
+
+  return {
+    get options() { return options },
+    refresh() {
+      const previousOptions = options;
+      options = determineOptions(initialOptions, options)
+      return { optionsChanged: previousOptions !== options }
+    }
+  }
+
+  function determineOptions(initialOptions, currentOptions = initialOptions) {
+    const breakpoints = initialOptions.breakpoints || {}
+    const breakpoint = determineLastValidBreakpoint(breakpoints)
+    if (breakpoint === currentBreakpoint) return currentOptions
+
+    currentBreakpoint = breakpoint
+    const breakpointOptions = breakpoints[currentBreakpoint] || initialOptions
+    const newOptions = { ...defaultOptions, ...initialOptions, ...breakpointOptions }
+    return newOptions
+  }
+
+  function determineLastValidBreakpoint(breakpoints) {
+    let lastValid
+    for (let value in breakpoints) { // there is no guarantee that this will have the correct order, breakpoints should be in an array
+      if (window.matchMedia(value).matches) lastValid = value
+    }
+    return lastValid
+  }
 }
