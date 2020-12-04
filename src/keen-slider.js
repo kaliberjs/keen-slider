@@ -1,6 +1,7 @@
 import './polyfills'
 import KeenSliderType, { TOptionsEvents } from '../index'
 
+/** @type {TOptionsEvents} */
 const defaultOptions = {
   centered: false,
   breakpoints: null,
@@ -70,8 +71,13 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
      // of this function and the resize function can live inside the slider
     const { optionsChanged } = breakpointBasedOptions.refresh()
     if (optionsChanged) {
+      const { options } = breakpointBasedOptions
+      const newOptions = options.resetSlide
+        ? options
+        : { ...options, initial: slider.current.details().absoluteSlide }
+
       slider.current.destroy()
-      slider.current = KeenSlider(initialContainer, breakpointBasedOptions.options)
+      slider.current = KeenSlider(initialContainer, newOptions)
     } else {
       const windowWidth = window.innerWidth
       if (!force && windowWidth === resizeLastWidth) return
@@ -100,10 +106,8 @@ function KeenSlider(initialContainer, options) {
   let width
   let slidesPerView
   let spacing
-  let optionsChanged = false
-  // let sliderCreated = false
 
-  let trackCurrentIdx
+  let trackCurrentIdx = options.initial
   let trackPosition = 0
   let trackMeasurePoints = []
   let trackDirection
@@ -480,6 +484,8 @@ function KeenSlider(initialContainer, options) {
   }
 
   function sliderResize() {
+    // start with Options - a wrapper for the options that can include code like this, but also
+    // the different option related functions here
     const optionSlides = options.slides
     if (typeof optionSlides === 'number') {
       slides = null
@@ -500,16 +506,12 @@ function KeenSlider(initialContainer, options) {
       : 0
     slidesSetWidths()
 
-    const currentIdx =
-      (optionsChanged && options.resetSlide)
-        ? options.initial
-        : trackCurrentIdx
+    const currentIdx = trackCurrentIdx
     trackSetPositionByIdx(isLoop() ? currentIdx : trackClampIndex(currentIdx))
 
     if (isVertialSlider()) {
       container.setAttribute(attributeVertical, true)
     }
-    optionsChanged = false
   }
 
   function sliderUnbind() {
@@ -804,6 +806,9 @@ function pipeMethods(keys, slider) {
   )
 }
 
+/**
+ * @param {TOptionsEvents} initialOptions
+ */
 function BreakpointBasedOptions(initialOptions) {
   let currentBreakpoint = null
   let options = determineOptions(initialOptions)
@@ -817,6 +822,10 @@ function BreakpointBasedOptions(initialOptions) {
     }
   }
 
+  /**
+   * @param {TOptionsEvents} initialOptions
+   * @param {TOptionsEvents} currentOptions
+   */
   function determineOptions(initialOptions, currentOptions = initialOptions) {
     const breakpoints = initialOptions.breakpoints || {}
     const breakpoint = determineLastValidBreakpoint(breakpoints)
