@@ -40,10 +40,8 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
   let resizeLastWidth = null
   let breakpointBasedOptions = BreakpointBasedOptions(initialOptions)
-  const slider = { current: KeenSlider(initialContainer, breakpointBasedOptions.options) }
 
-  sliderInit()
-  return {
+  const pubfuncs = {
     destroy() {
       eventsRemove()
       slider.current.destroy()
@@ -51,14 +49,35 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     resize() {
       sliderResize(true)
     },
+    controls: active => { // not sure if this is a valuable API
+      const newOptions = {
+        ...breakpointBasedOptions.options,
+        initial: slider.current.details().absoluteSlide,
+        controls: active,
+      }
+      slider.current.destroy()
+      slider.current = KeenSlider(initialContainer, newOptions, pubfuncs)
+    },
     refresh(options) { // this function should probably removed, it is simpler to just destroy and create a new instance
       slider.current.destroy()
       breakpointBasedOptions = BreakpointBasedOptions(options || initialOptions)
-      slider.current = KeenSlider(initialContainer, breakpointBasedOptions.options)
+      slider.current = KeenSlider(initialContainer, breakpointBasedOptions.options, pubfuncs)
     },
-    // temporary construct, forward all methods to the current slider
-    ...pipeMethods(keys(slider.current), slider)
+    next() { return slider.next() },
+    prev() { return slider.prev() },
+    moveToSlide(idx, duration) {
+      return slider.current.moveToSlide(idx, duration)
+    },
+    moveToSlideRelative(idx, nearest = false, duration) {
+      return slider.current.moveToSlideRelative(idx, nearest, duration)
+    },
+    details() { return slider.current.details() },
   }
+  const slider = { current: KeenSlider(initialContainer, breakpointBasedOptions.options, pubfuncs) }
+
+  sliderInit()
+
+  return pubfuncs
 
   function sliderInit() {
     eventAdd(window, 'resize', sliderResize)
@@ -77,7 +96,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
         : { ...options, initial: slider.current.details().absoluteSlide }
 
       slider.current.destroy()
-      slider.current = KeenSlider(initialContainer, newOptions)
+      slider.current = KeenSlider(initialContainer, newOptions, pubfuncs)
     } else {
       const windowWidth = window.innerWidth
       if (!force && windowWidth === resizeLastWidth) return
@@ -90,24 +109,31 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 /**
  *
  * @param {HTMLElement} initialContainer
- * @param {TOptionsEvents} options
+ * @param {TOptionsEvents} initialOptions
+ * @param {KeenSliderType} pubfuncs // This is a complication, it is used for hooks and some other method calls, what if one of those methods decides to call 'destroy' or 'refresh'?
+ *                                  // If people want to use this, they could easily do it by keeping track of the slider instance, no need for us to supply it
  */
-function KeenSlider(initialContainer, options) {
+function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   const attributeMoving = 'data-keen-slider-moves'
   const attributeVertical = 'data-keen-slider-v'
 
   const { eventAdd, eventsRemove } = EventBookKeeper()
 
   const [container] = getElements(initialContainer)
-  let touchControls
-  let length
+  const options = Options(initialOptions, {
+    container,
+    moveModes: {
+      'free': moveFree,
+      'free-snap': moveSnapFree,
+      'snap': moveSnapOne,
+      'default': moveSnapOne,
+    }
+  })
   let origin
-  let slides
   let width
-  let slidesPerView
   let spacing
 
-  let trackCurrentIdx = options.initial
+  let trackCurrentIdx = options.initialIndex
   let trackPosition = 0
   let trackMeasurePoints = []
   let trackDirection
@@ -123,7 +149,6 @@ function KeenSlider(initialContainer, options) {
   let touchLastX
   let touchLastClientX
   let touchLastClientY
-  let touchMultiplicator
   let touchJustStarted
 
   // animation
@@ -136,10 +161,9 @@ function KeenSlider(initialContainer, options) {
   let moveForceFinish
   let moveCallBack
 
-  const pubfuncs = {
-    controls: active => {
-      touchControls = active
-    },
+  sliderInit()
+
+  return {
     destroy: sliderUnbind,
     next() {
       moveToIdx(trackCurrentIdx + 1, true)
@@ -157,13 +181,9 @@ function KeenSlider(initialContainer, options) {
       return trackGetDetails()
     },
     resize: sliderResize,
-    // exposed for now, during refactor
+    // exposed for now, during refactor, should probably be moved to wrapper
     hook,
   }
-
-  sliderInit()
-
-  return pubfuncs
 
   function sliderInit() {
     if (!container) return // this should probably throw an error
@@ -176,7 +196,7 @@ function KeenSlider(initialContainer, options) {
     if (
       !touchActive ||
       touchIdentifier !== eventGetIdentifier(e) ||
-      !isTouchable()
+      !options.isTouchable
     )
       return
     const x = eventGetX(e).x
@@ -186,17 +206,17 @@ function KeenSlider(initialContainer, options) {
     if (touchJustStarted) {
       trackMeasureReset()
       touchLastX = x
-      container.setAttribute(attributeMoving, true)
+      container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
       touchJustStarted = false
     }
     if (e.cancelable) e.preventDefault()
     const touchDistance = touchLastX - x
-    trackAdd(touchMultiplicator(touchDistance, pubfuncs) * (!isRtl() ? 1 : -1), e.timeStamp)
+    trackAdd(options.touchMultiplicator(touchDistance, pubfuncs) * (!options.isRtl ? 1 : -1), e.timeStamp)
     touchLastX = x
   }
 
   function eventDragStart(e) {
-    if (touchActive || !isTouchable() || eventIsIgnoreTarget(e.target)) return
+    if (touchActive || !options.isTouchable || eventIsIgnoreTarget(e.target)) return
     touchActive = true
     touchJustStarted = true
     touchIdentifier = eventGetIdentifier(e)
@@ -212,7 +232,7 @@ function KeenSlider(initialContainer, options) {
     if (
       !touchActive ||
       touchIdentifier !== eventGetIdentifier(e, true) ||
-      !isTouchable()
+      !options.isTouchable
     )
       return
     container.removeAttribute(attributeMoving)
@@ -240,7 +260,7 @@ function KeenSlider(initialContainer, options) {
   function eventGetX(e) {
     const touches = eventGetTargetTouches(e)
     return {
-      x: isVertialSlider()
+      x: options.isVerticalSlider
         ? !touches
           ? e.pageY
           : touches[0].screenY
@@ -252,15 +272,15 @@ function KeenSlider(initialContainer, options) {
   }
 
   function eventIsIgnoreTarget(target) {
-    return target.hasAttribute(options.preventEvent)
+    return target.hasAttribute(options.preventEventAttributeName)
   }
 
   function eventIsSlide(e) {
     const touches = eventGetTargetTouches(e)
     if (!touches) return true
     const touch = touches[0]
-    const x = isVertialSlider() ? touch.clientY : touch.clientX
-    const y = isVertialSlider() ? touch.clientX : touch.clientY
+    const x = options.isVerticalSlider ? touch.clientY : touch.clientX
+    const y = options.isVerticalSlider ? touch.clientX : touch.clientY
     const isSlide =
       touchLastClientX !== undefined &&
       touchLastClientY !== undefined &&
@@ -272,13 +292,13 @@ function KeenSlider(initialContainer, options) {
   }
 
   function eventWheel(e) {
-    if (!isTouchable()) return
+    if (!options.isTouchable) return
     if (touchActive) e.preventDefault()
   }
 
   function eventsAdd() {
     eventAdd(container, 'dragstart', function (e) {
-      if (!isTouchable()) return
+      if (!options.isTouchable) return
       e.preventDefault()
     })
     eventAdd(container, 'mousedown', eventDragStart)
@@ -306,30 +326,6 @@ function KeenSlider(initialContainer, options) {
     if (options[hook]) options[hook](pubfuncs)
   }
 
-  function isCenterMode() {
-    return options.centered
-  }
-
-  function isTouchable() {
-    return touchControls !== undefined ? touchControls : options.controls
-  }
-
-  function isLoop() {
-    return options.loop
-  }
-
-  function isRtl() {
-    return options.rtl
-  }
-
-  function isRubberband() {
-    return !options.loop && options.rubberband
-  }
-
-  function isVertialSlider() {
-    return !!options.vertical
-  }
-
   function moveAnimate() {
     reqId = window.requestAnimationFrame(moveAnimateUpdate)
   }
@@ -354,11 +350,11 @@ function KeenSlider(initialContainer, options) {
     }
 
     const offset = trackCalculateOffset(add)
-    if (offset !== 0 && !isLoop() && !isRubberband() && !moveForceFinish) {
+    if (offset !== 0 && !options.isLoop && !options.isRubberband && !moveForceFinish) {
       trackAdd(add - offset, false)
       return
     }
-    if (offset !== 0 && isRubberband() && !moveForceFinish) {
+    if (offset !== 0 && options.isRubberband && !moveForceFinish) {
       return moveRubberband()
     }
     moved += add
@@ -373,23 +369,13 @@ function KeenSlider(initialContainer, options) {
 
   function moveWithSpeed() {
     hook('beforeChange')
-    switch (options.mode) {
-      case 'free':
-        moveFree()
-        break
-      case 'free-snap':
-        moveSnapFree()
-        break
-      case 'snap':
-      default:
-        moveSnapOne()
-        break
-    }
+    const moveMode = options.moveMode
+    moveMode()
   }
 
   function moveSnapOne() {
     const startIndex =
-      slidesPerView === 1 && trackDirection !== 0
+      options.slidesPerView === 1 && trackDirection !== 0
         ? touchIndexStart
         : trackCurrentIdx
     moveToIdx(startIndex + Math.sign(trackDirection))
@@ -412,7 +398,7 @@ function KeenSlider(initialContainer, options) {
   function moveFree() {
     // todo: refactor!
     if (trackSpeed === 0)
-      return trackCalculateOffset(0) && !isLoop()
+      return trackCalculateOffset(0) && !options.isLoop
         ? moveToIdx(trackCurrentIdx)
         : false
     const friction = options.friction / Math.pow(Math.abs(trackSpeed), -0.5)
@@ -435,10 +421,10 @@ function KeenSlider(initialContainer, options) {
     const easing = function (t) {
       return 1 - Math.pow(1 - t, 5)
     }
-    const idx_trend = (trackPosition + distance) / (width / slidesPerView)
+    const idx_trend = (trackPosition + distance) / (width / options.slidesPerView)
     const idx =
       trackDirection === -1 ? Math.floor(idx_trend) : Math.ceil(idx_trend)
-    moveTo(idx * (width / slidesPerView) - trackPosition, duration, easing)
+    moveTo(idx * (width / options.slidesPerView) - trackPosition, duration, easing)
   }
 
   function moveRubberband() {
@@ -477,64 +463,47 @@ function KeenSlider(initialContainer, options) {
     moveAnimate()
   }
 
-  function sliderGetSlidesPerView(option) {
-    return typeof option === 'function'
-      ? option()
-      : clampValue(option, 1, Math.max(isLoop() ? length - 1 : length, 1))
-  }
-
   function sliderResize() {
-    // start with Options - a wrapper for the options that can include code like this, but also
-    // the different option related functions here
-    const optionSlides = options.slides
-    if (typeof optionSlides === 'number') {
-      slides = null
-      length = optionSlides
-    } else {
-      slides = getElements(optionSlides, container)
-      length = slides ? slides.length : 0
-    }
-    const dragSpeed = options.dragSpeed
-    touchMultiplicator =
-      typeof dragSpeed === 'function' ? dragSpeed : val => val * dragSpeed
-    width = isVertialSlider() ? container.offsetHeight : container.offsetWidth
-    slidesPerView = sliderGetSlidesPerView(options.slidesPerView)
-    spacing = clampValue(options.spacing, 0, width / (slidesPerView - 1) - 1)
+    options.updateSlidesAndLength()
+    options.updateSlidesPerView()
+
+    width = options.isVerticalSlider ? container.offsetHeight : container.offsetWidth
+    // move these to options, note that they all depend on slidesPerView, which might be changed here
+    spacing = clampValue(options.spacing, 0, width / (options.slidesPerView - 1) - 1)
     width += spacing
-    origin = isCenterMode()
-      ? (width / 2 - width / slidesPerView / 2) / width
+    origin = options.isCenterMode
+      ? (width / 2 - width / options.slidesPerView / 2) / width
       : 0
-    slidesSetWidths()
+    if (options.slides) slidesSetWidths()
 
     const currentIdx = trackCurrentIdx
-    trackSetPositionByIdx(isLoop() ? currentIdx : trackClampIndex(currentIdx))
+    trackSetPositionByIdx(options.isLoop ? currentIdx : trackClampIndex(currentIdx))
 
-    if (isVertialSlider()) {
-      container.setAttribute(attributeVertical, true)
+    if (options.isVerticalSlider) {
+      container.setAttribute(attributeVertical, 'true') // changed from true to 'true'
     }
   }
 
   function sliderUnbind() {
     eventsRemove()
-    slidesRemoveStyles()
+    if (options.slides) slidesRemoveStyles()
     if (container && container.hasAttribute(attributeVertical))
       container.removeAttribute(attributeVertical)
     hook('destroyed')
   }
 
   function slidesSetPositions() {
-    if (!slides) return
-    slides.forEach((slide, idx) => {
+    options.slides.forEach((slide, idx) => {
       const absoluteDistance = trackSlidePositions[idx].distance * width
       const pos =
         absoluteDistance -
         idx *
-          (width / slidesPerView -
-            spacing / slidesPerView -
-            (spacing / slidesPerView) * (slidesPerView - 1))
+          (width / options.slidesPerView -
+            spacing / options.slidesPerView -
+            (spacing / options.slidesPerView) * (options.slidesPerView - 1))
 
-      const x = isVertialSlider() ? 0 : pos
-      const y = isVertialSlider() ? pos : 0
+      const x = options.isVerticalSlider ? 0 : pos
+      const y = options.isVerticalSlider ? pos : 0
       const transformString = `translate3d(${x}px, ${y}px, 0)`
       slide.style.transform = transformString
       slide.style['-webkit-transform'] = transformString
@@ -542,12 +511,11 @@ function KeenSlider(initialContainer, options) {
   }
 
   function slidesSetWidths() {
-    if (!slides) return
-    const prop = isVertialSlider() ? 'height' : 'width'
-    slides.forEach(slide => {
+    const prop = options.isVerticalSlider ? 'height' : 'width'
+    options.slides.forEach(slide => {
       // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
-      const style = `calc(${100 / slidesPerView}% - ${
-        (spacing / slidesPerView) * (slidesPerView - 1)
+      const style = `calc(${100 / options.slidesPerView}% - ${
+        (spacing / options.slidesPerView) * (options.slidesPerView - 1)
       }px)`
       slide.style[`min-${prop}`] = style
       slide.style[`max-${prop}`] = style
@@ -555,12 +523,9 @@ function KeenSlider(initialContainer, options) {
   }
 
   function slidesRemoveStyles() {
-    if (!slides) return
-    let styles = ['transform', '-webkit-transform']
-    styles = isVertialSlider
-      ? [...styles, 'min-height', 'max-height']
-      : [...styles, 'min-width', 'max-width']
-    slides.forEach(slide => {
+    const prop = options.isVerticalSlider ? 'height' : 'width'
+    const styles = ['transform', '-webkit-transform', `min-${prop}`, `max-${prop}`]
+    options.slides.forEach(slide => {
       styles.forEach(style => {
         slide.style.removeProperty(style)
       })
@@ -576,8 +541,8 @@ function KeenSlider(initialContainer, options) {
 
   function trackCalculateOffset(add) {
     const trackLength =
-      (width * (length - 1 * (isCenterMode() ? 1 : slidesPerView))) /
-      slidesPerView
+      (width * (length - 1 * (options.isCenterMode ? 1 : options.slidesPerView))) /
+      options.slidesPerView
     const position = trackPosition + add
     return position > trackLength
       ? position - trackLength
@@ -590,7 +555,7 @@ function KeenSlider(initialContainer, options) {
     return clampValue(
       idx,
       0,
-      length - 1 - (isCenterMode() ? 0 : slidesPerView - 1)
+      length - 1 - (options.isCenterMode ? 0 : options.slidesPerView - 1)
     )
   }
 
@@ -607,13 +572,13 @@ function KeenSlider(initialContainer, options) {
       relativeSlide: ((trackCurrentIdx % length) + length) % length,
       absoluteSlide: trackCurrentIdx,
       size: length,
-      slidesPerView,
+      slidesPerView: options.slidesPerView,
       widthOrHeight: width,
     }
   }
 
   function trackGetIdx(idx, relative = false, nearest = false) {
-    return !isLoop()
+    return !options.isLoop
       ? trackClampIndex(idx)
       : !relative
       ? idx
@@ -621,7 +586,7 @@ function KeenSlider(initialContainer, options) {
   }
 
   function trackGetIdxDistance(idx) {
-    return -(-((width / slidesPerView) * idx) + trackPosition)
+    return -(-((width / options.slidesPerView) * idx) + trackPosition)
   }
 
   function trackGetRelativeIdx(idx, nearest) {
@@ -671,61 +636,61 @@ function KeenSlider(initialContainer, options) {
 
   // todo - option for not calculating slides that are not in sight
   function trackMove() {
-    trackProgress = isLoop()
-      ? (trackPosition % ((width * length) / slidesPerView)) /
-        ((width * length) / slidesPerView)
-      : trackPosition / ((width * length) / slidesPerView)
+    trackProgress = options.isLoop
+      ? (trackPosition % ((width * length) / options.slidesPerView)) /
+        ((width * length) / options.slidesPerView)
+      : trackPosition / ((width * length) / options.slidesPerView)
 
     trackSetCurrentIdx()
     const slidePositions = []
     for (let idx = 0; idx < length; idx++) {
       let distance =
         (((1 / length) * idx -
-          (trackProgress < 0 && isLoop() ? trackProgress + 1 : trackProgress)) *
+          (trackProgress < 0 && options.isLoop ? trackProgress + 1 : trackProgress)) *
           length) /
-          slidesPerView +
+          options.slidesPerView +
         origin
-      if (isLoop())
+      if (options.isLoop)
         distance +=
-          distance > (length - 1) / slidesPerView
-            ? -(length / slidesPerView)
-            : distance < -(length / slidesPerView) + 1
-            ? length / slidesPerView
+          distance > (length - 1) / options.slidesPerView
+            ? -(length / options.slidesPerView)
+            : distance < -(length / options.slidesPerView) + 1
+            ? length / options.slidesPerView
             : 0
 
-      const slideWidth = 1 / slidesPerView
+      const slideWidth = 1 / options.slidesPerView
       const left = distance + slideWidth
       const portion =
         left < slideWidth
           ? left / slideWidth
           : left > 1
-          ? 1 - ((left - 1) * slidesPerView) / 1
+          ? 1 - ((left - 1) * options.slidesPerView) / 1
           : 1
       slidePositions.push({
         portion: portion < 0 || portion > 1 ? 0 : portion,
-        distance: !isRtl()
+        distance: !options.isRtl
         ? distance
         : distance * -1 + 1 - slideWidth
       })
     }
     trackSlidePositions = slidePositions
-    slidesSetPositions()
+    if (options.slides) slidesSetPositions()
     hook('move')
   }
 
   function trackrubberband(add) {
-    if (isLoop()) return add
+    if (options.isLoop) return add
     const offset = trackCalculateOffset(add)
-    if (!isRubberband()) return add - offset
+    if (!options.isRubberband) return add - offset
     if (offset === 0) return add
     const easing = t => (1 - Math.abs(t)) * (1 - Math.abs(t))
     return add * easing(offset / width)
   }
 
   function trackSetCurrentIdx() {
-    const new_idx = Math.round(trackPosition / (width / slidesPerView))
+    const new_idx = Math.round(trackPosition / (width / options.slidesPerView))
     if (new_idx === trackCurrentIdx) return
-    if (!isLoop() && (new_idx < 0 || new_idx > length - 1)) return
+    if (!options.isLoop && (new_idx < 0 || new_idx > length - 1)) return
     trackCurrentIdx = new_idx
     hook('slideChanged')
   }
@@ -739,10 +704,17 @@ function KeenSlider(initialContainer, options) {
 
 // helper functions
 
+/**
+ * @param {NodeList} nodeList
+ * @returns {Array<Node>}
+ */
 function convertToArray(nodeList) {
   return Array.prototype.slice.call(nodeList)
 }
 
+/**
+ * @returns {Array<HTMLElement>}
+ */
 function getElements(element, wrapper = document) {
   return typeof element === 'function'
     ? convertToArray(element())
@@ -801,6 +773,122 @@ function pipeMethods(keys, slider) {
     (result, method) => ({ ...result, [method]: (...args) => slider.current[method](...args) }),
     {}
   )
+}
+
+/**
+ * @param {TOptionsEvents} options
+ * @param {{
+ *  container: any,
+ *  moveModes: Record<TOptionsEvents['mode'] | 'default', () => void>
+ * }} x
+ *
+ * @returns {{
+ *  isCenterMode: boolean,
+ *  isTouchable: boolean,
+ *  isLoop: boolean,
+ *  isRtl: boolean,
+ *  isRubberband: boolean,
+ *  isVerticalSlider: boolean,
+ *  initialIndex: number,
+ *  preventEventAttributeName: string,
+ *  cancelOnLeave: boolean,
+ *  moveMode: () => void,
+ *  duration: number,
+ *  friction: number,
+ *  updateSlidesAndLength(): void,
+ *  slides: Array<HTMLElement> | null,
+ *  length: number,
+ *  touchMultiplicator: (val: number, instance: KeenSliderType) => number,
+ *  updateSlidesPerView(): void,
+ *  slidesPerView: number,
+ *  spacing: number,
+ * }} // only here to help with refactoring
+ */
+function Options(options, { moveModes, container }) {
+  // TODO: the functions in options make stuff complicated. We should probably remove them if they influence behavior
+  // an example is the fact that options.slides can be a function. It would be better to destroy and recreate the slider,
+  // at the moment of writing this comment, determining the slides is done during resize
+
+  // these constructs will probably be removed, but they make some side effects more obvious
+  let slides, length = null
+  updateSlidesAndLength()
+  let slidesPerView = null
+  updateSlidesPerView()
+
+  return {
+    get isCenterMode() {
+      return options.centered
+    },
+    get isTouchable() {
+      return options.controls
+    },
+    get isLoop() {
+      return options.loop
+    },
+    get isRtl() {
+      return options.rtl
+    },
+    get isRubberband() {
+      return !options.loop && options.rubberband
+    },
+    get isVerticalSlider() {
+      return !!options.vertical
+    },
+    get initialIndex() {
+      return options.initial
+    },
+    get preventEventAttributeName() {
+      return options.preventEvent
+    },
+    get cancelOnLeave() {
+      return options.cancelOnLeave
+    },
+    get moveMode() {
+      return moveModes[options.mode] || moveModes.default
+    },
+    get duration() {
+      return options.duration
+    },
+    get friction() {
+      return options.friction
+    },
+    updateSlidesAndLength,
+    get slides() {
+      return slides
+    },
+    get length() {
+      return length
+    },
+    get touchMultiplicator() {
+      const { dragSpeed } = options
+      return typeof dragSpeed === 'function' ? dragSpeed : val => val * dragSpeed
+    },
+    updateSlidesPerView,
+    get slidesPerView() {
+      return slidesPerView
+    },
+    get spacing() {
+      return options.spacing
+    }
+  }
+
+  function updateSlidesAndLength() { // side effects should go later on
+    const optionSlides = options.slides
+    if (typeof optionSlides === 'number') {
+      slides = null
+      length = optionSlides
+    } else {
+      slides = getElements(optionSlides, container)
+      length = slides ? slides.length : 0
+    }
+  }
+
+  function updateSlidesPerView() {
+    const option = options.slidesPerView
+    slidesPerView = typeof option === 'function'
+      ? option()
+      : clampValue(option, 1, Math.max(options.loop ? length - 1 : length, 1))
+  }
 }
 
 /**
