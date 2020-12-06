@@ -202,7 +202,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     }
     if (e.cancelable) e.preventDefault()
     const touchDistance = touchLastX - x
-    trackAdd(options.touchMultiplicator(touchDistance, pubfuncs) * (!options.isRtl ? 1 : -1), e.timeStamp)
+    trackAdd(options.touchMultiplicator(touchDistance, pubfuncs), e.timeStamp)
     touchLastX = x
   }
 
@@ -751,7 +751,9 @@ function Options(options, { moveModes, container }) {
   // an example is the fact that options.slides can be a function. It would be better to destroy and recreate the slider,
   // at the moment of writing this comment, determining the slides is done during resize
 
-  // these constructs will probably be removed, but they make some side effects more obvious
+  // these constructs will probably be removed, but they make some side effects more obvious in this stage
+  // note to self: check if you can refactor them to the outside of this component, so that the option functions
+  // are used in the appropriate times to create new instance
   let slides, numberOfSlides = null
   updateSlidesAndNumberOfSlides()
   let slidesPerView = null
@@ -805,7 +807,8 @@ function Options(options, { moveModes, container }) {
     },
     get touchMultiplicator() {
       const { dragSpeed } = options
-      return typeof dragSpeed === 'function' ? dragSpeed : val => val * dragSpeed
+      const multiplicator = typeof dragSpeed === 'function' ? dragSpeed : val => val * dragSpeed
+      return (val, instance) => multiplicator(val, instance) * (!options.rtl ? 1 : -1)
     },
     updateSlidesPerView,
     get slidesPerView() {
