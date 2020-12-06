@@ -129,9 +129,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       'default': moveSnapOne,
     }
   })
-  let origin
-  let width
-  let spacing
 
   let trackCurrentIdx = options.initialIndex
   let trackPosition = 0
@@ -349,7 +346,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       return
     }
 
-    const offset = trackCalculateOffset(add)
+    const offset = options.calculateOffset(trackPosition + add)
     if (offset !== 0 && !options.isLoop && !options.isRubberband && !moveForceFinish) {
       trackAdd(add - offset, false)
       return
@@ -396,11 +393,11 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function moveFree() {
-    // todo: refactor!
-    if (trackSpeed === 0)
-      return trackCalculateOffset(0) && !options.isLoop
-        ? moveToIdx(trackCurrentIdx)
-        : false
+    // todo: refactor! working on it
+    if (trackSpeed === 0) {
+      if (options.calculateOffset(trackPosition) && !options.isLoop) moveToIdx()
+      return
+    }
     const friction = options.friction / Math.pow(Math.abs(trackSpeed), -0.5)
     const distance =
       (Math.pow(trackSpeed, 2) / friction) * Math.sign(trackSpeed)
@@ -421,10 +418,10 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     const easing = function (t) {
       return 1 - Math.pow(1 - t, 5)
     }
-    const idx_trend = (trackPosition + distance) / (width / options.slidesPerView)
+    const idx_trend = (trackPosition + distance) / (options.widthOrHeight / options.slidesPerView)
     const idx =
       trackDirection === -1 ? Math.floor(idx_trend) : Math.ceil(idx_trend)
-    moveTo(idx * (width / options.slidesPerView) - trackPosition, duration, easing)
+    moveTo(idx * (options.widthOrHeight / options.slidesPerView) - trackPosition, duration, easing)
   }
 
   function moveRubberband() {
@@ -464,24 +461,14 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function sliderResize() {
-    options.updateSlidesAndLength()
+    options.updateSlidesAndNumberOfSlides()
     options.updateSlidesPerView()
+    options.measureContainer()
+    if (options.slides) slidesSetWidthsOrHeights()
 
-    width = options.isVerticalSlider ? container.offsetHeight : container.offsetWidth
-    // move these to options, note that they all depend on slidesPerView, which might be changed here
-    spacing = clampValue(options.spacing, 0, width / (options.slidesPerView - 1) - 1)
-    width += spacing
-    origin = options.isCenterMode
-      ? (width / 2 - width / options.slidesPerView / 2) / width
-      : 0
-    if (options.slides) slidesSetWidths()
+    trackSetPositionByIdx(options.isLoop ? trackCurrentIdx : options.clampIndex(trackCurrentIdx))
 
-    const currentIdx = trackCurrentIdx
-    trackSetPositionByIdx(options.isLoop ? currentIdx : trackClampIndex(currentIdx))
-
-    if (options.isVerticalSlider) {
-      container.setAttribute(attributeVertical, 'true') // changed from true to 'true'
-    }
+    if (options.isVerticalSlider) container.setAttribute(attributeVertical, 'true') // changed from true to 'true'
   }
 
   function sliderUnbind() {
@@ -494,13 +481,13 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   function slidesSetPositions() {
     options.slides.forEach((slide, idx) => {
-      const absoluteDistance = trackSlidePositions[idx].distance * width
+      const absoluteDistance = trackSlidePositions[idx].distance * options.widthOrHeight
       const pos =
         absoluteDistance -
         idx *
-          (width / options.slidesPerView -
-            spacing / options.slidesPerView -
-            (spacing / options.slidesPerView) * (options.slidesPerView - 1))
+          (options.widthOrHeight / options.slidesPerView -
+            options.spacing / options.slidesPerView -
+            (options.spacing / options.slidesPerView) * (options.slidesPerView - 1))
 
       const x = options.isVerticalSlider ? 0 : pos
       const y = options.isVerticalSlider ? pos : 0
@@ -510,12 +497,12 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     })
   }
 
-  function slidesSetWidths() {
+  function slidesSetWidthsOrHeights() {
     const prop = options.isVerticalSlider ? 'height' : 'width'
     options.slides.forEach(slide => {
       // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
       const style = `calc(${100 / options.slidesPerView}% - ${
-        (spacing / options.slidesPerView) * (options.slidesPerView - 1)
+        (options.spacing / options.slidesPerView) * (options.slidesPerView - 1)
       }px)`
       slide.style[`min-${prop}`] = style
       slide.style[`max-${prop}`] = style
@@ -534,29 +521,9 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   function trackAdd(val, drag = true, timestamp = Date.now()) {
     trackMeasure(val, timestamp)
-    if (drag) val = trackrubberband(val)
+    if (drag) val = trackRubberband(val)
     trackPosition += val
     trackMove()
-  }
-
-  function trackCalculateOffset(add) {
-    const trackLength =
-      (width * (length - 1 * (options.isCenterMode ? 1 : options.slidesPerView))) /
-      options.slidesPerView
-    const position = trackPosition + add
-    return position > trackLength
-      ? position - trackLength
-      : position < 0
-      ? position
-      : 0
-  }
-
-  function trackClampIndex(idx) {
-    return clampValue(
-      idx,
-      0,
-      length - 1 - (options.isCenterMode ? 0 : options.slidesPerView - 1)
-    )
   }
 
   function trackGetDetails() {
@@ -565,35 +532,37 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     return {
       direction: trackDirection,
       progressTrack: progress,
-      progressSlides: (progress * length) / (length - 1),
+      progressSlides: (progress * options.numberOfSlides) / (options.numberOfSlides - 1), // what if length is 1? devision by 0
       positions: trackSlidePositions,
       position: trackPosition,
       speed: trackSpeed,
-      relativeSlide: ((trackCurrentIdx % length) + length) % length,
+      relativeSlide: ((trackCurrentIdx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides,
       absoluteSlide: trackCurrentIdx,
-      size: length,
+      size: options.numberOfSlides,
       slidesPerView: options.slidesPerView,
-      widthOrHeight: width,
+      widthOrHeight: options.widthOrHeight,
     }
   }
 
   function trackGetIdx(idx, relative = false, nearest = false) {
-    return !options.isLoop
-      ? trackClampIndex(idx)
-      : !relative
-      ? idx
-      : trackGetRelativeIdx(idx, nearest)
+    return (
+      !options.isLoop ? options.clampIndex(idx) :
+      !relative ? idx :
+      trackGetRelativeIdx(idx, nearest)
+    )
   }
 
   function trackGetIdxDistance(idx) {
-    return -(-((width / options.slidesPerView) * idx) + trackPosition)
+    return -(-((options.widthOrHeight / options.slidesPerView) * idx) + trackPosition)
   }
 
   function trackGetRelativeIdx(idx, nearest) {
-    idx = ((idx % length) + length) % length
-    const current = ((trackCurrentIdx % length) + length) % length
-    const left = current < idx ? -current - length + idx : -(current - idx)
-    const right = current > idx ? length - current + idx : idx - current
+    // reduce side effects in function that do other stuff as well, like this one
+    // it should not return a value AND perform a side effect
+    idx = ((idx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides
+    const current = ((trackCurrentIdx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides
+    const left = current < idx ? -current - options.numberOfSlides + idx : -(current - idx)
+    const right = current > idx ? options.numberOfSlides - current + idx : idx - current
     const add = nearest
       ? Math.abs(left) <= right
         ? left
@@ -619,8 +588,10 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       trackSpeed = 0
     }, 50)
     trackMeasurePoints = trackMeasurePoints.slice(-6)
-    if (trackMeasurePoints.length <= 1 || trackDirection === 0)
-      return (trackSpeed = 0)
+    if (trackMeasurePoints.length <= 1 || trackDirection === 0) {
+      trackSpeed = 0
+      return
+    }
 
     const distance = trackMeasurePoints
       .slice(0, -1)
@@ -637,25 +608,25 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   // todo - option for not calculating slides that are not in sight
   function trackMove() {
     trackProgress = options.isLoop
-      ? (trackPosition % ((width * length) / options.slidesPerView)) /
-        ((width * length) / options.slidesPerView)
-      : trackPosition / ((width * length) / options.slidesPerView)
+      ? (trackPosition % ((options.widthOrHeight * options.numberOfSlides) / options.slidesPerView)) /
+        ((options.widthOrHeight * options.numberOfSlides) / options.slidesPerView)
+      : trackPosition / ((options.widthOrHeight * options.numberOfSlides) / options.slidesPerView)
 
     trackSetCurrentIdx()
     const slidePositions = []
-    for (let idx = 0; idx < length; idx++) {
+    for (let idx = 0; idx < options.numberOfSlides; idx++) {
       let distance =
-        (((1 / length) * idx -
+        (((1 / options.numberOfSlides) * idx -
           (trackProgress < 0 && options.isLoop ? trackProgress + 1 : trackProgress)) *
-          length) /
+          options.numberOfSlides) /
           options.slidesPerView +
-        origin
+          options.origin
       if (options.isLoop)
         distance +=
-          distance > (length - 1) / options.slidesPerView
-            ? -(length / options.slidesPerView)
-            : distance < -(length / options.slidesPerView) + 1
-            ? length / options.slidesPerView
+          distance > (options.numberOfSlides - 1) / options.slidesPerView
+            ? -(options.numberOfSlides / options.slidesPerView)
+            : distance < -(options.numberOfSlides / options.slidesPerView) + 1
+            ? options.numberOfSlides / options.slidesPerView
             : 0
 
       const slideWidth = 1 / options.slidesPerView
@@ -678,19 +649,19 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     hook('move')
   }
 
-  function trackrubberband(add) {
+  function trackRubberband(add) {
     if (options.isLoop) return add
-    const offset = trackCalculateOffset(add)
+    const offset = options.calculateOffset(trackPosition + add)
     if (!options.isRubberband) return add - offset
     if (offset === 0) return add
     const easing = t => (1 - Math.abs(t)) * (1 - Math.abs(t))
-    return add * easing(offset / width)
+    return add * easing(offset / options.widthOrHeight)
   }
 
   function trackSetCurrentIdx() {
-    const new_idx = Math.round(trackPosition / (width / options.slidesPerView))
+    const new_idx = Math.round(trackPosition / (options.widthOrHeight / options.slidesPerView))
     if (new_idx === trackCurrentIdx) return
-    if (!options.isLoop && (new_idx < 0 || new_idx > length - 1)) return
+    if (!options.isLoop && (new_idx < 0 || new_idx > options.numberOfSlides - 1)) return
     trackCurrentIdx = new_idx
     hook('slideChanged')
   }
@@ -750,32 +721,6 @@ function EventBookKeeper() {
 }
 
 /**
- * @template T
- * @param {T} o
- *
- * @returns {ObjectKeys<T>}
- */
-function keys(o) {
-  // @ts-ignore
-  return Object.keys(o)
-}
-
-/**
- *
- * @param {ObjectKeys<ReturnType<KeenSlider>>} keys
- * @param {{ current: ReturnType<KeenSlider> }} slider
- *
- * @returns {ReturnType<KeenSlider>}
- */
-function pipeMethods(keys, slider) {
-  // @ts-ignore
-  return keys.reduce(
-    (result, method) => ({ ...result, [method]: (...args) => slider.current[method](...args) }),
-    {}
-  )
-}
-
-/**
  * @param {TOptionsEvents} options
  * @param {{
  *  container: any,
@@ -795,13 +740,19 @@ function pipeMethods(keys, slider) {
  *  moveMode: () => void,
  *  duration: number,
  *  friction: number,
- *  updateSlidesAndLength(): void,
+ *  updateSlidesAndNumberOfSlides(): void,
  *  slides: Array<HTMLElement> | null,
- *  length: number,
+ *  numberOfSlides: number,
  *  touchMultiplicator: (val: number, instance: KeenSliderType) => number,
  *  updateSlidesPerView(): void,
  *  slidesPerView: number,
  *  spacing: number,
+ *  measureContainer(): void,
+ *  widthOrHeight: number,
+ *  spacing: number,
+ *  origin: number,
+ *  clampIndex(idx: number): number,
+ *  calculateOffset(position: number): number,
  * }} // only here to help with refactoring
  */
 function Options(options, { moveModes, container }) {
@@ -810,12 +761,14 @@ function Options(options, { moveModes, container }) {
   // at the moment of writing this comment, determining the slides is done during resize
 
   // these constructs will probably be removed, but they make some side effects more obvious
-  let slides, length = null
-  updateSlidesAndLength()
+  let slides, numberOfSlides = null
+  updateSlidesAndNumberOfSlides()
   let slidesPerView = null
   updateSlidesPerView()
+  let containerSize = null
+  measureContainer()
 
-  return {
+  const dynamicOptions = {
     get isCenterMode() {
       return options.centered
     },
@@ -852,12 +805,12 @@ function Options(options, { moveModes, container }) {
     get friction() {
       return options.friction
     },
-    updateSlidesAndLength,
+    updateSlidesAndNumberOfSlides,
     get slides() {
       return slides
     },
-    get length() {
-      return length
+    get numberOfSlides() {
+      return numberOfSlides
     },
     get touchMultiplicator() {
       const { dragSpeed } = options
@@ -867,19 +820,51 @@ function Options(options, { moveModes, container }) {
     get slidesPerView() {
       return slidesPerView
     },
+    measureContainer,
+    get widthOrHeight() {
+      return containerSize + dynamicOptions.spacing
+    },
     get spacing() {
-      return options.spacing
-    }
+      return clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
+    },
+    get origin() {
+      const { widthOrHeight } = dynamicOptions
+      return options.centered
+        ? (widthOrHeight / 2 - widthOrHeight / slidesPerView / 2) / widthOrHeight
+        : 0
+    },
+    clampIndex(idx) {
+      return clampValue(idx, 0, numberOfSlides - 1 - (options.centered ? 0 : slidesPerView - 1))
+    },
+    calculateOffset(position) {
+      const trackLength =
+        (
+          dynamicOptions.widthOrHeight * (
+            numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.centered ? 1 : slidesPerView)
+          )
+        ) / slidesPerView
+      return (
+        position > trackLength ? position - trackLength :
+        position < 0           ? position :
+        0
+      )
+    },
   }
 
-  function updateSlidesAndLength() { // side effects should go later on
+  return dynamicOptions
+
+  function measureContainer() {
+    containerSize = options.vertical ? container.offsetHeight : container.offsetWidth
+  }
+
+  function updateSlidesAndNumberOfSlides() { // side effects should go later on
     const optionSlides = options.slides
     if (typeof optionSlides === 'number') {
       slides = null
-      length = optionSlides
+      numberOfSlides = optionSlides
     } else {
       slides = getElements(optionSlides, container)
-      length = slides ? slides.length : 0
+      numberOfSlides = slides ? slides.length : 0
     }
   }
 
@@ -887,7 +872,7 @@ function Options(options, { moveModes, container }) {
     const option = options.slidesPerView
     slidesPerView = typeof option === 'function'
       ? option()
-      : clampValue(option, 1, Math.max(options.loop ? length - 1 : length, 1))
+      : clampValue(option, 1, Math.max(options.loop ? numberOfSlides - 1 : numberOfSlides, 1))
   }
 }
 
