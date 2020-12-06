@@ -151,12 +151,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   // animation
   let reqId
   let startTime
-  let moveDistance
-  let moveDuration
-  let moveEasing
-  let moved
-  let moveForceFinish
-  let moveCallBack
 
   sliderInit()
 
@@ -323,8 +317,8 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     if (options[hook]) options[hook](pubfuncs)
   }
 
-  function moveAnimate() {
-    reqId = window.requestAnimationFrame(moveAnimateUpdate)
+  function moveAnimate(moveData) {
+    reqId = window.requestAnimationFrame(timestamp => moveAnimateUpdate(timestamp, moveData))
   }
 
   function moveAnimateAbort() {
@@ -335,10 +329,12 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     startTime = null
   }
 
-  function moveAnimateUpdate(timestamp) {
+  function moveAnimateUpdate(timestamp, moveData) {
+    const { moveDistance, moved, moveDuration, moveEasing, moveForceFinish, moveCallBack, } = moveData
+    // TODO: make sure there is no DOM reading here (also check option calls)
     if (!startTime) startTime = timestamp
     const duration = timestamp - startTime
-    let add = moveCalcValue(duration)
+    let add = moveDistance * moveEasing(duration / moveDuration) - moved
     if (duration >= moveDuration) {
       trackAdd(moveDistance - moved, false)
       if (moveCallBack) return moveCallBack()
@@ -352,16 +348,11 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       return
     }
     if (offset !== 0 && options.isRubberband && !moveForceFinish) {
-      return moveRubberband()
+      moveRubberband()
+      return
     }
-    moved += add
     trackAdd(add, false)
-    moveAnimate()
-  }
-
-  function moveCalcValue(progress) {
-    const value = moveDistance * moveEasing(progress / moveDuration) - moved
-    return value
+    moveAnimate({ ...moveData, moved: moved + add })
   }
 
   function moveWithSpeed() {
@@ -450,14 +441,14 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   function moveTo(distance, duration, easing, forceFinish, cb) {
     moveAnimateAbort()
-    moveDistance = distance
-    moved = 0
-    moveDuration = duration
-    moveEasing = easing
-    moveForceFinish = forceFinish
-    moveCallBack = cb
-    startTime = null
-    moveAnimate()
+    moveAnimate({
+      moveDistance: distance,
+      moved: 0,
+      moveDuration: duration,
+      moveEasing: easing,
+      moveForceFinish: forceFinish,
+      moveCallBack: cb,
+    })
   }
 
   function sliderResize() {
