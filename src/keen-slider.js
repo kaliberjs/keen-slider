@@ -186,8 +186,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   function eventDrag(e) {
     if (
       !touchActive ||
-      touchIdentifier !== eventGetIdentifier(e) ||
-      !options.isTouchable
+      touchIdentifier !== eventGetIdentifier(e)
     )
       return
     const x = eventGetX(e).x
@@ -207,7 +206,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function eventDragStart(e) {
-    if (touchActive || !options.isTouchable || eventIsIgnoreTarget(e.target)) return
+    if (touchActive || eventIsIgnoreTarget(e.target)) return
     touchActive = true
     touchJustStarted = true
     touchIdentifier = eventGetIdentifier(e)
@@ -223,7 +222,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     if (
       !touchActive ||
       touchIdentifier !== eventGetIdentifier(e, true) ||
-      !options.isTouchable
     )
       return
     container.removeAttribute(attributeMoving)
@@ -283,13 +281,13 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function eventWheel(e) {
-    if (!options.isTouchable) return
     if (touchActive) e.preventDefault()
   }
 
   function eventsAdd() {
+    if (!options.isTouchable) return
+
     eventAdd(container, 'dragstart', function (e) {
-      if (!options.isTouchable) return
       e.preventDefault()
     })
     eventAdd(container, 'mousedown', eventDragStart)
