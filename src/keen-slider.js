@@ -141,12 +141,11 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   // touch/swipe helper
   let touchIndexStart
-  let touchActive
+  let isDragging
   let touchIdentifier
-  let touchLastX
-  let touchLastClientX
-  let touchLastClientY
-  let touchJustStarted
+  let touchLastXOrY
+  let clientTouchPoints
+  let dragJustStarted
 
   // animation
   let reqId
@@ -183,80 +182,83 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     hook('mounted')
   }
 
-  function eventDrag(e) {
-    if (
-      !touchActive ||
-      touchIdentifier !== eventGetIdentifier(e)
-    )
-      return
-    const x = eventGetX(e).x
-    if (!eventIsSlide(e) && touchJustStarted) {
-      return eventDragStop(e)
-    }
-    if (touchJustStarted) {
-      trackMeasureReset()
-      touchLastX = x
-      container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
-      touchJustStarted = false
-    }
-    if (e.cancelable) e.preventDefault()
-    const touchDistance = touchLastX - x
-    trackAdd(options.touchMultiplicator(touchDistance, pubfuncs), e.timeStamp)
-    touchLastX = x
-  }
-
   function eventDragStart(e) {
-    if (touchActive || eventIsIgnoreTarget(e.target)) return
-    touchActive = true
-    touchJustStarted = true
-    touchIdentifier = eventGetIdentifier(e)
-    eventIsSlide(e)
+    if (isDragging || eventIsIgnoreTarget(e.target)) return
+    isDragging = true
+    dragJustStarted = true
+    touchIdentifier = eventGetIdentifier(e.targetTouches)
+
+    const [touch] = e.targetTouches || []
+    if (touch) clientTouchPoints = ClientTouchPoints(touch)
+
     moveAnimateAbort()
     touchIndexStart = trackCurrentIdx
-    touchLastX = eventGetX(e).x
     trackAdd(0, e.timeStamp)
     hook('dragStart')
   }
 
-  function eventDragStop(e) {
-    if (
-      !touchActive ||
-      touchIdentifier !== eventGetIdentifier(e, true) ||
-    )
+  function eventDrag(e) {
+    if (!isDragging || touchIdentifier !== eventGetIdentifier(e.targetTouches)) return
+    if (dragJustStarted && !eventIsSlide(e)) {
+      eventDragStop(e)
       return
+    }
+    if (e.cancelable) e.preventDefault()
+
+    const xOrY = eventGetXOrY(e)
+    const touchDistance = dragJustStarted ? 0 : touchLastXOrY - xOrY
+    if (dragJustStarted) {
+      trackMeasureReset()
+      container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
+      dragJustStarted = false
+    }
+    trackAdd(options.touchMultiplicator(touchDistance, pubfuncs), e.timeStamp)
+    touchLastXOrY = xOrY
+  }
+
+  function eventDragStop(e) {
+    if (!isDragging || touchIdentifier !== eventGetIdentifier(e.changedTouches)) return
     container.removeAttribute(attributeMoving)
-    touchActive = false
+    isDragging = false
     moveWithSpeed()
 
     hook('dragEnd')
   }
 
-  function eventGetChangedTouches(e) {
-    return e.changedTouches
+  function eventGetIdentifier(touches) {
+    return (
+      !touches ? 'default' :
+      touches[0] ? touches[0].identifier :
+      'error'
+    )
   }
 
-  function eventGetIdentifier(e, changedTouches = false) {
-    const touches = changedTouches
-      ? eventGetChangedTouches(e)
-      : eventGetTargetTouches(e)
-    return !touches ? 'default' : touches[0] ? touches[0].identifier : 'error'
+  function eventGetXOrY(e) {
+    const [touch] = e.targetTouches || []
+    return options.isVerticalSlider
+      ? (!touch ? e.pageY : touch.screenY)
+      : (!touch ? e.pageX : touch.screenX)
   }
 
-  function eventGetTargetTouches(e) {
-    return e.targetTouches
-  }
+  function ClientTouchPoints(initialTouch) {
+    let previous = eventGetClientTouchPoints(initialTouch)
 
-  function eventGetX(e) {
-    const touches = eventGetTargetTouches(e)
     return {
-      x: options.isVerticalSlider
-        ? !touches
-          ? e.pageY
-          : touches[0].screenY
-        : !touches
-        ? e.pageX
-        : touches[0].screenX,
-      timestamp: e.timeStamp,
+      fromTouch(touch) {
+        const current = eventGetClientTouchPoints(touch)
+        const result = {
+          previous,
+          current,
+        }
+        previous = current
+        return result
+      }
+    }
+
+    function eventGetClientTouchPoints(touch) {
+      return options.isVerticalSlider
+        ? [touch.clientY, touch.clientX]
+        : [touch.clientX, touch.clientY]
     }
   }
 
@@ -265,50 +267,33 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function eventIsSlide(e) {
-    const touches = eventGetTargetTouches(e)
-    if (!touches) return true
-    const touch = touches[0]
-    const x = options.isVerticalSlider ? touch.clientY : touch.clientX
-    const y = options.isVerticalSlider ? touch.clientX : touch.clientY
-    const isSlide =
-      touchLastClientX !== undefined &&
-      touchLastClientY !== undefined &&
-      Math.abs(touchLastClientY - y) <= Math.abs(touchLastClientX - x)
+    const [touch] = e.targetTouches || []
+    if (!touch) return true
+    if (!clientTouchPoints) return false
 
-    touchLastClientX = x
-    touchLastClientY = y
+    const { current: [a, b], previous: [previousA, previousB] } = clientTouchPoints.fromTouch(touch)
+    const isSlide = Math.abs(previousB - b) <= Math.abs(previousA - a)
+
     return isSlide
-  }
-
-  function eventWheel(e) {
-    if (touchActive) e.preventDefault()
   }
 
   function eventsAdd() {
     if (!options.isTouchable) return
 
-    eventAdd(container, 'dragstart', function (e) {
-      e.preventDefault()
-    })
+    eventAdd(container, 'dragstart', e => { e.preventDefault() })
+    eventAdd(window, 'wheel', e => { if (isDragging) e.preventDefault() }, { passive: false })
+
     eventAdd(container, 'mousedown', eventDragStart)
+    eventAdd(container, 'touchstart', eventDragStart, { passive: true })
+
     eventAdd(options.cancelOnLeave ? container : window, 'mousemove', eventDrag)
+    eventAdd(container, 'touchmove', eventDrag, { passive: false })
+
     if (options.cancelOnLeave) eventAdd(container, 'mouseleave', eventDragStop)
     eventAdd(window, 'mouseup', eventDragStop)
-    eventAdd(container, 'touchstart', eventDragStart, {
-      passive: true,
-    })
-    eventAdd(container, 'touchmove', eventDrag, {
-      passive: false,
-    })
-    eventAdd(container, 'touchend', eventDragStop, {
-      passive: true,
-    })
-    eventAdd(container, 'touchcancel', eventDragStop, {
-      passive: true,
-    })
-    eventAdd(window, 'wheel', eventWheel, {
-      passive: false,
-    })
+    eventAdd(container, 'touchend', eventDragStop, { passive: true })
+    eventAdd(container, 'touchcancel', eventDragStop, { passive: true })
+
   }
 
   function hook(hook) {
@@ -332,7 +317,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     // TODO: make sure there is no DOM reading here (also check option calls)
     if (!startTime) startTime = timestamp
     const duration = timestamp - startTime
-    let add = moveDistance * moveEasing(duration / moveDuration) - moved
+    const add = moveDistance * moveEasing(duration / moveDuration) - moved
     if (duration >= moveDuration) {
       trackAdd(moveDistance - moved, false)
       if (moveCallBack) return moveCallBack()
@@ -364,7 +349,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       options.slidesPerView === 1 && trackDirection !== 0
         ? touchIndexStart
         : trackCurrentIdx
-    moveToIdx(startIndex + Math.sign(trackDirection))
+    moveToIdx(startIndex + trackDirection)
   }
 
   function moveToIdx(
@@ -468,19 +453,21 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     hook('destroyed')
   }
 
-  function slidesSetPositions() {
+  function slidesSetPositions(slidePositions) {
     options.slides.forEach((slide, idx) => {
-      const absoluteDistance = trackSlidePositions[idx].distance * options.widthOrHeight
+      const absoluteDistance = slidePositions[idx].distance * options.widthOrHeight
       const pos =
         absoluteDistance -
         idx *
+          // this bit can be moved to options as soon as I can think of a name:
           (options.widthOrHeight / options.slidesPerView -
             options.spacing / options.slidesPerView -
             (options.spacing / options.slidesPerView) * (options.slidesPerView - 1))
 
-      const x = options.isVerticalSlider ? 0 : pos
-      const y = options.isVerticalSlider ? pos : 0
-      const transformString = `translate3d(${x}px, ${y}px, 0)`
+      const [a, b] = options.isVerticalSlider ? [0, pos] : [pos, 0]
+
+      const transformString = `translate3d(${a}px, ${b}px, 0)`
+      // these writes should be in a request animation frame
       slide.style.transform = transformString
       slide.style['-webkit-transform'] = transformString
     })
@@ -493,6 +480,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       const style = `calc(${100 / options.slidesPerView}% - ${
         (options.spacing / options.slidesPerView) * (options.slidesPerView - 1)
       }px)`
+      // these writes should be in a request animation frame
       slide.style[`min-${prop}`] = style
       slide.style[`max-${prop}`] = style
     })
@@ -503,6 +491,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     const styles = ['transform', '-webkit-transform', `min-${prop}`, `max-${prop}`]
     options.slides.forEach(slide => {
       styles.forEach(style => {
+        // this write should be in a request animation frame
         slide.style.removeProperty(style)
       })
     })
@@ -525,7 +514,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       positions: trackSlidePositions,
       position: trackPosition,
       speed: trackSpeed,
-      relativeSlide: ((trackCurrentIdx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides,
+      relativeSlide: options.ensureIndexInBounds(trackCurrentIdx),
       absoluteSlide: trackCurrentIdx,
       size: options.numberOfSlides,
       slidesPerView: options.slidesPerView,
@@ -545,20 +534,22 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     return -(-((options.widthOrHeight / options.slidesPerView) * idx) + trackPosition)
   }
 
+  // reduce side effects in function that do other stuff as well
+  // it should not return a value AND perform a side effect
   function trackGetRelativeIdx(idx, nearest) {
-    // reduce side effects in function that do other stuff as well, like this one
-    // it should not return a value AND perform a side effect
-    idx = ((idx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides
-    const current = ((trackCurrentIdx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides
-    const left = current < idx ? -current - options.numberOfSlides + idx : -(current - idx)
-    const right = current > idx ? options.numberOfSlides - current + idx : idx - current
-    const add = nearest
-      ? Math.abs(left) <= right
-        ? left
-        : right
-      : idx < current
-      ? left
-      : right
+    const boundedIdx = options.ensureIndexInBounds(idx)
+    const current = options.ensureIndexInBounds(trackCurrentIdx)
+    const left = current < boundedIdx
+      ? -current - options.numberOfSlides + boundedIdx
+      : -(current - boundedIdx)
+    const right = current > boundedIdx
+      ? options.numberOfSlides - current + boundedIdx
+      : boundedIdx - current
+    const add = (
+      nearest ? (Math.abs(left) <= right ? left : right) :
+      boundedIdx < current ? left :
+      right
+    )
     return trackCurrentIdx + add
   }
 
@@ -596,12 +587,10 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   // todo - option for not calculating slides that are not in sight
   function trackMove() {
-    trackProgress = options.isLoop
-      ? (trackPosition % ((options.widthOrHeight * options.numberOfSlides) / options.slidesPerView)) /
-        ((options.widthOrHeight * options.numberOfSlides) / options.slidesPerView)
-      : trackPosition / ((options.widthOrHeight * options.numberOfSlides) / options.slidesPerView)
+    trackProgress = options.calculateTrackProgress(trackPosition)
 
-    trackSetCurrentIdx()
+    trackSetCurrentIdx(trackPosition)
+
     const slidePositions = []
     for (let idx = 0; idx < options.numberOfSlides; idx++) {
       let distance =
@@ -620,21 +609,18 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
       const slideWidth = 1 / options.slidesPerView
       const left = distance + slideWidth
-      const portion =
-        left < slideWidth
-          ? left / slideWidth
-          : left > 1
-          ? 1 - ((left - 1) * options.slidesPerView) / 1
-          : 1
+      const portion = (
+        left < slideWidth ? left / slideWidth :
+        left > 1          ? 1 - ((left - 1) * options.slidesPerView) / 1 :
+        1
+      )
       slidePositions.push({
         portion: portion < 0 || portion > 1 ? 0 : portion,
-        distance: !options.isRtl
-        ? distance
-        : distance * -1 + 1 - slideWidth
+        distance: !options.isRtl ? distance : distance * -1 + 1 - slideWidth
       })
     }
     trackSlidePositions = slidePositions
-    if (options.slides) slidesSetPositions()
+    if (options.slides) slidesSetPositions(slidePositions)
     hook('move')
   }
 
@@ -647,10 +633,10 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     return add * easing(offset / options.widthOrHeight)
   }
 
-  function trackSetCurrentIdx() {
-    const new_idx = Math.round(trackPosition / (options.widthOrHeight / options.slidesPerView))
-    if (new_idx === trackCurrentIdx) return
-    if (!options.isLoop && (new_idx < 0 || new_idx > options.numberOfSlides - 1)) return
+  function trackSetCurrentIdx(trackPosition) {
+    const new_idx = options.calculateIndex(trackPosition)
+    if (new_idx === trackCurrentIdx || options.isIndexOutOfBounds(new_idx)) return
+
     trackCurrentIdx = new_idx
     hook('slideChanged')
   }
@@ -742,6 +728,10 @@ function EventBookKeeper() {
  *  origin: number,
  *  clampIndex(idx: number): number,
  *  calculateOffset(position: number): number,
+ *  calculateTrackProgress(trackPosition: number): number,
+ *  calculateIndex(trackPosition: number): number,
+ *  isIndexOutOfBounds(idx: number): boolean,
+ *  ensureIndexInBounds(idx: number): number,
  * }} // only here to help with refactoring
  */
 function Options(options, { moveModes, container }) {
@@ -840,6 +830,22 @@ function Options(options, { moveModes, container }) {
         position < 0           ? position :
         0
       )
+    },
+    calculateTrackProgress(trackPosition) {
+      // should give this variable a better name, however brain is now in refactor mode and I can't think of one
+      const x = (dynamicOptions.widthOrHeight * numberOfSlides) / slidesPerView
+      return options.loop
+        ? (trackPosition % x) / x
+        : trackPosition / x
+    },
+    calculateIndex(trackPosition) {
+      return Math.round(trackPosition / (dynamicOptions.widthOrHeight / slidesPerView))
+    },
+    isIndexOutOfBounds(idx) {
+      return !options.loop && (idx < 0 || idx > numberOfSlides - 1)
+    },
+    ensureIndexInBounds(idx) {
+      return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
     },
   }
 
