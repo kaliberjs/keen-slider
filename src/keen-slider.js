@@ -462,8 +462,10 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     return -(-((options.widthOrHeight / options.slidesPerView) * idx) + trackPosition)
   }
 
+  // The logic in this function does not seem quite right, it seems to wrongly decide between
+  // left and right by comparing (the normalized) idx to the current position
   function trackGetRelativeIdx(idx, nearest) {
-    const relativeIdx = options.ensureIndexInBounds(idx)
+    const relativeIdx = options.ensureIndexInBounds(idx) // here we lose the direction
     const current = options.ensureIndexInBounds(trackCurrentIdx)
     const left = current < relativeIdx
       ? -current - options.numberOfSlides + relativeIdx
@@ -473,8 +475,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       : relativeIdx - current
     const add = (
       nearest ? (Math.abs(left) <= right ? left : right) :
-      relativeIdx < current ? left :
-      right
+      relativeIdx < current ? left :  right // here we decide left or right based on the abs value of the relative index
     )
     return trackCurrentIdx + add
   }
