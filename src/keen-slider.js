@@ -162,8 +162,9 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     moveToSlide(idx, duration = options.duration) {
       moveToIdx(idx, { forceFinish: true , duration })
     },
-    moveToSlideRelative(idx, nearest = false, duration = options.duration) {
-      moveToIdx(idx, { forceFinish: true, duration, relative: true, nearest })
+    moveToSlideRelative(relativeIdx, nearest = false, duration = options.duration) {
+      const idx = trackGetRelativeIdx(relativeIdx, nearest)
+      moveToIdx(idx, { forceFinish: true, duration })
     },
     details() {
       return trackGetDetails()
@@ -195,7 +196,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     options.measureContainer()
     if (options.slides) slidesSetWidthsOrHeights()
 
-    trackSetPositionByIdx(options.isLoop ? trackCurrentIdx : options.clampIndex(trackCurrentIdx))
+    trackSetPositionByIdx(options.clampIndex(trackCurrentIdx))
   }
 
   function handleDragStart(e) {
@@ -291,11 +292,11 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   function moveToIdx(
     idx,
-    { forceFinish = false, duration = options.duration, relative = false, nearest = false }
+    { forceFinish = false, duration = options.duration }
   ) {
     // forceFinish is used to ignore boundaries when rubberband movement is active
     moveTo({
-      distance: trackGetIdxDistance(trackGetIdx(idx, relative, nearest)),
+      distance: trackGetIdxDistance(options.clampIndex(idx)),
       duration,
       easing: t => 1 + --t * t * t * t * t,
       forceFinish,
@@ -358,7 +359,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       forceFinish: true,
       cb: () => {
         moveTo({
-          distance: trackGetIdxDistance(trackGetIdx(trackCurrentIdx)),
+          distance: trackGetIdxDistance(options.clampIndex(trackCurrentIdx)),
           duration: 500,
           easing,
           forceFinish: true,
@@ -457,32 +458,22 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     }
   }
 
-  function trackGetIdx(idx, relative = false, nearest = false) {
-    return (
-      !options.isLoop ? options.clampIndex(idx) :
-      !relative ? idx :
-      trackGetRelativeIdx(idx, nearest)
-    )
-  }
-
   function trackGetIdxDistance(idx) {
     return -(-((options.widthOrHeight / options.slidesPerView) * idx) + trackPosition)
   }
 
-  // reduce side effects in function that do other stuff as well
-  // it should not return a value AND perform a side effect
   function trackGetRelativeIdx(idx, nearest) {
-    const boundedIdx = options.ensureIndexInBounds(idx)
+    const relativeIdx = options.ensureIndexInBounds(idx)
     const current = options.ensureIndexInBounds(trackCurrentIdx)
-    const left = current < boundedIdx
-      ? -current - options.numberOfSlides + boundedIdx
-      : -(current - boundedIdx)
-    const right = current > boundedIdx
-      ? options.numberOfSlides - current + boundedIdx
-      : boundedIdx - current
+    const left = current < relativeIdx
+      ? -current - options.numberOfSlides + relativeIdx
+      : -(current - relativeIdx)
+    const right = current > relativeIdx
+      ? options.numberOfSlides - current + relativeIdx
+      : relativeIdx - current
     const add = (
       nearest ? (Math.abs(left) <= right ? left : right) :
-      boundedIdx < current ? left :
+      relativeIdx < current ? left :
       right
     )
     return trackCurrentIdx + add
@@ -610,10 +601,8 @@ function BreakpointBasedOptions(initialOptions) {
   * }} x
   *
   * @returns {{
-  *  isCenterMode: boolean,
   *  isTouchable: boolean,
   *  isLoop: boolean,
-  *  isRtl: boolean,
   *  isRubberband: boolean,
   *  isVerticalSlider: boolean,
   *  initialIndex: number,
@@ -658,17 +647,11 @@ function BreakpointBasedOptions(initialOptions) {
    measureContainer()
 
    const dynamicOptions = {
-     get isCenterMode() {
-       return options.centered
-     },
      get isTouchable() {
        return options.controls
      },
      get isLoop() {
        return options.loop
-     },
-     get isRtl() {
-       return options.rtl
      },
      get isRubberband() {
        return !options.loop && options.rubberband
@@ -724,7 +707,9 @@ function BreakpointBasedOptions(initialOptions) {
          : 0
      },
      clampIndex(idx) {
-       return clampValue(idx, 0, numberOfSlides - 1 - (options.centered ? 0 : slidesPerView - 1))
+       return options.loop
+        ? idx
+        : clampValue(idx, 0, numberOfSlides - 1 - (options.centered ? 0 : slidesPerView - 1))
      },
      calculateOffset(position) {
        const trackLength =
