@@ -117,8 +117,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   const attributeMoving = 'data-keen-slider-moves'
   const attributeVertical = 'data-keen-slider-v'
 
-  const { eventAdd, eventsRemove } = EventBookKeeper()
-
   const [container] = getElements(initialContainer)
   const options = Options(initialOptions, {
     container,
@@ -129,6 +127,13 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       'default': moveSnapOne,
     }
   })
+  const dragHandling = DragHandling(container, options, {
+    isValidDragEvent: e => eventIsSlide(e),
+    onDragStart: handleDragStart,
+    onFirstDrag: handleFirstDrag,
+    onDrag: handleDrag,
+    onDragStop: handleDragStop,
+  })
 
   let trackCurrentIdx = options.initialIndex
   let trackPosition = 0
@@ -138,11 +143,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   // touch/swipe helper
   let touchIndexStart
-  let isDragging
-  let touchIdentifier
-  let touchLastXOrY
   let clientTouchPoints
-  let dragJustStarted
 
   // animation
   let reqId
@@ -151,7 +152,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   sliderInit()
 
   return {
-    destroy: sliderUnbind,
+    destroy: sliderDestroy,
     next() {
       moveToIdx(trackCurrentIdx + 1, { forceFinish: true })
     },
@@ -173,10 +174,19 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function sliderInit() {
-    if (!container) return // this should probably throw an error
+    if (!container) return // this should probably throw an error, but there might be a use case, not sure
+    if (options.isVerticalSlider) container.setAttribute(attributeVertical, 'true') // changed from true to 'true'
     sliderResize()
-    eventsAdd()
+    if (options.isTouchable) dragHandling.startListening()
     hook('mounted')
+  }
+
+  function sliderDestroy() {
+    dragHandling.destroy()
+    if (options.slides) slidesRemoveStyles()
+    if (container && container.hasAttribute(attributeVertical))
+      container.removeAttribute(attributeVertical) // this should also be in a request animation frame
+    hook('destroyed')
   }
 
   function sliderResize() {
@@ -186,36 +196,11 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     if (options.slides) slidesSetWidthsOrHeights()
 
     trackSetPositionByIdx(options.isLoop ? trackCurrentIdx : options.clampIndex(trackCurrentIdx))
-
-    if (options.isVerticalSlider) container.setAttribute(attributeVertical, 'true') // changed from true to 'true'
   }
 
-  function eventsAdd() {
-    if (!options.isTouchable) return
-
-    eventAdd(container, 'dragstart', e => { e.preventDefault() })
-    eventAdd(window, 'wheel', e => { if (isDragging) e.preventDefault() }, { passive: false })
-
-    eventAdd(container, 'mousedown', eventDragStart)
-    eventAdd(container, 'touchstart', eventDragStart, { passive: true })
-
-    eventAdd(options.cancelOnLeave ? container : window, 'mousemove', eventDrag)
-    eventAdd(container, 'touchmove', eventDrag, { passive: false })
-
-    if (options.cancelOnLeave) eventAdd(container, 'mouseleave', eventDragStop)
-    eventAdd(window, 'mouseup', eventDragStop)
-    eventAdd(container, 'touchend', eventDragStop, { passive: true })
-    eventAdd(container, 'touchcancel', eventDragStop, { passive: true })
-  }
-
-  function eventDragStart(e) {
-    if (isDragging || eventIsIgnoreTarget(e.target)) return
-    isDragging = true
-    dragJustStarted = true
-    touchIdentifier = eventGetIdentifier(e.targetTouches)
-
+  function handleDragStart(e) {
     const [touch] = e.targetTouches || []
-    if (touch) clientTouchPoints = ClientTouchPoints(touch)
+    if (touch) clientTouchPoints = ClientTouchPoints(options, touch)
 
     moveAnimateAbort()
     touchIndexStart = trackCurrentIdx
@@ -223,75 +208,22 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     hook('dragStart')
   }
 
-  function eventDrag(e) {
-    if (!isDragging || touchIdentifier !== eventGetIdentifier(e.targetTouches)) return
-    if (dragJustStarted && !eventIsSlide(e)) {
-      eventDragStop(e)
-      return
-    }
-    if (e.cancelable) e.preventDefault()
-
-    const xOrY = eventGetXOrY(e)
-    const touchDistance = dragJustStarted ? 0 : touchLastXOrY - xOrY
-    if (dragJustStarted) {
-      trackSpeedAndDirection.reset()
-      container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
-      dragJustStarted = false
-    }
-    trackAdd(options.touchMultiplicator(touchDistance, pubfuncs), { timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
-    touchLastXOrY = xOrY
+  function handleFirstDrag(e) {
+    trackSpeedAndDirection.reset()
+    container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
   }
 
-  function eventDragStop(e) {
-    if (!isDragging || touchIdentifier !== eventGetIdentifier(e.changedTouches)) return
+  function handleDrag(e, { distance }) {
+    trackAdd(options.touchMultiplicator(distance, pubfuncs), { timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
+  }
+
+  function handleDragStop(e) {
     container.removeAttribute(attributeMoving)
-    isDragging = false
 
     hook('beforeChange')
     options.dragEndMovement()
 
     hook('dragEnd')
-  }
-
-  function eventGetIdentifier(touches) {
-    return (
-      !touches ? 'default' :
-      touches[0] ? touches[0].identifier :
-      'error'
-    )
-  }
-
-  function eventGetXOrY(e) {
-    const [touch] = e.targetTouches || []
-    return options.isVerticalSlider
-      ? (!touch ? e.pageY : touch.screenY)
-      : (!touch ? e.pageX : touch.screenX)
-  }
-
-  function ClientTouchPoints(initialTouch) {
-    let previous = eventGetClientTouchPoints(initialTouch)
-
-    return {
-      fromTouch(touch) {
-        const current = eventGetClientTouchPoints(touch)
-        const result = {
-          previous,
-          current,
-        }
-        previous = current
-        return result
-      }
-    }
-
-    function eventGetClientTouchPoints(touch) {
-      return options.isVerticalSlider
-        ? [touch.clientY, touch.clientX]
-        : [touch.clientX, touch.clientY]
-    }
-  }
-
-  function eventIsIgnoreTarget(target) {
-    return target.hasAttribute(options.preventEventAttributeName)
   }
 
   function eventIsSlide(e) {
@@ -445,14 +377,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       moveForceFinish: forceFinish,
       moveCallBack: cb,
     })
-  }
-
-  function sliderUnbind() {
-    eventsRemove()
-    if (options.slides) slidesRemoveStyles()
-    if (container && container.hasAttribute(attributeVertical))
-      container.removeAttribute(attributeVertical) // this should also be in a request animation frame
-    hook('destroyed')
   }
 
   function slidesSetPositions(slides, slidePositions) {
@@ -934,5 +858,119 @@ function SpeedAndDirection() {
 
   function reset() {
     trackMeasurePoints = []
+  }
+}
+
+function ClientTouchPoints(options, initialTouch) {
+  let previous = eventGetClientTouchPoints(initialTouch)
+
+  return {
+    fromTouch(touch) {
+      const current = eventGetClientTouchPoints(touch)
+      const result = {
+        previous,
+        current,
+      }
+      previous = current
+      return result
+    }
+  }
+
+  function eventGetClientTouchPoints(touch) {
+    return options.isVerticalSlider
+      ? [touch.clientY, touch.clientX]
+      : [touch.clientX, touch.clientY]
+  }
+}
+
+function DragHandling(container, options, {
+  isValidDragEvent,
+  onDragStart,
+  onFirstDrag,
+  onDrag,
+  onDragStop,
+}) {
+  const { eventAdd, eventsRemove } = EventBookKeeper()
+
+  let isDragging = false
+  let dragJustStarted = false
+  let touchIdentifier = null
+  let touchLastXOrY = 0
+
+  return {
+    startListening() { eventsAdd() },
+    destroy() { eventsRemove() },
+  }
+
+  function eventsAdd() {
+    eventAdd(container, 'dragstart', e => { e.preventDefault() })
+    eventAdd(window, 'wheel', e => { if (isDragging) e.preventDefault() }, { passive: false })
+
+    eventAdd(container, 'mousedown', eventDragStart)
+    eventAdd(container, 'touchstart', eventDragStart, { passive: true })
+
+    eventAdd(options.cancelOnLeave ? container : window, 'mousemove', eventDrag)
+    eventAdd(container, 'touchmove', eventDrag, { passive: false })
+
+    if (options.cancelOnLeave) eventAdd(container, 'mouseleave', eventDragStop)
+    eventAdd(window, 'mouseup', eventDragStop)
+    eventAdd(container, 'touchend', eventDragStop, { passive: true })
+    eventAdd(container, 'touchcancel', eventDragStop, { passive: true })
+  }
+
+  function eventDragStart(e) {
+    if (isDragging || eventIsIgnoreTarget(e.target)) return
+    isDragging = true
+    dragJustStarted = true
+    touchIdentifier = eventGetIdentifier(e.targetTouches)
+
+    onDragStart(e)
+  }
+
+  function eventDrag(e) {
+    if (!isDragging || touchIdentifier !== eventGetIdentifier(e.targetTouches)) return
+    if (dragJustStarted && !isValidDragEvent(e)) {
+      eventDragStop(e)
+      return
+    }
+    if (e.cancelable) e.preventDefault()
+
+    const xOrY = eventGetXOrY(e)
+    const distance = dragJustStarted ? 0 : touchLastXOrY - xOrY
+    if (dragJustStarted) {
+      onFirstDrag(e)
+      //trackSpeedAndDirection.reset()
+      //container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
+      dragJustStarted = false
+    }
+    onDrag(e, { distance })
+    // trackAdd(options.touchMultiplicator(touchDistance, pubfuncs), { timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
+    touchLastXOrY = xOrY
+  }
+
+  function eventDragStop(e) {
+    if (!isDragging || touchIdentifier !== eventGetIdentifier(e.changedTouches)) return
+    isDragging = false
+
+    onDragStop(e)
+  }
+
+  function eventGetIdentifier(touches) {
+    return (
+      !touches ? 'default' :
+      touches[0] ? touches[0].identifier :
+      'error'
+    )
+  }
+
+  function eventGetXOrY(e) {
+    const [touch] = e.targetTouches || []
+    return options.isVerticalSlider
+      ? (!touch ? e.pageY : touch.screenY)
+      : (!touch ? e.pageX : touch.screenX)
+  }
+
+  function eventIsIgnoreTarget(target) {
+    return target.hasAttribute(options.preventEventAttributeName)
   }
 }
