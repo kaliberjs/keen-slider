@@ -117,6 +117,37 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   const attributeMoving = 'data-keen-slider-moves'
   const attributeVertical = 'data-keen-slider-v'
 
+  /*
+    Thinking out loud (talking to myself)
+
+    - split the slider into a few more sections, class, components (whatever you want to call them)
+      - something to handle user movement
+      - something to handle movement after a user lets go
+      - something to handle manual (public API) movement
+      - something to handle tracking (getDetails)
+      - something to handle positioning, maybe split virtual (without slides) and concrete
+        (with slides)
+    - move calculations out of options, the options object only expose getters, so the maximum
+      complexity will be getter functions. If these getters require calculations it should depend
+      on another object. Note to self: don't introduce cyclic dependencies
+
+    Important note to self: keep functionality that belongs together (will change at the same rate
+    and for the same reasons) close together. Once you think you are done, re-read this line and
+    evaluate.
+
+    Once the code is clean think about your ideal design:
+    - no function options (unless they are callbacks or hooks)
+    - only one way to do something
+    - no contrasting options (for example rubberband with loop)
+    - behavior as an option (easings, movement, timing, ...)
+    - framework friendly writes (only think about this when everything else is in order)
+    - have the option to set attributes on the html (maybe in the shape of a callback)
+
+    With the thought of the ideal design in mind, move everything else outside and provide it as
+    a backwards compatibility layer. It's ok if 'weird' or 'undefined' logic is lost, it's not ok
+    if we lose 'normal use' backwards compatibility.
+  */
+
   const [container] = getElements(initialContainer)
   const options = Options(initialOptions, {
     container,
@@ -193,7 +224,9 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     options.measureContainer()
     if (options.slides) slidesSetWidthsOrHeights()
 
-    trackSetPositionByIdx(options.clampIndex(trackCurrentIdx))
+    hook('beforeChange')
+    trackAdd(trackGetIdxDistance(options.clampIndex(trackCurrentIdx)), { drag: false })
+    hook('afterChange')
   }
 
   function handleDragStart(e) {
@@ -313,19 +346,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     moveToIdx(startIndex + trackDirection, { forceFinish: false })
   }
 
-  function moveToIdx(
-    idx,
-    { forceFinish, duration = options.duration }
-  ) {
-    // forceFinish is used to ignore boundaries when rubberband movement is active
-    moveTo({
-      distance: trackGetIdxDistance(options.clampIndex(idx)),
-      duration,
-      easing: function easeOutQuint(t) { return 1 + --t * t * t * t * t },
-      forceFinish,
-    })
-  }
-
   function moveFree() {
     // todo: refactor! working on it
     const trackSpeed = trackSpeedAndDirection.speed
@@ -361,6 +381,19 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
       duration: Math.abs(trackSpeed / friction) * 6,
       easing: function easeOutQuint(t) { return 1 - Math.pow(1 - t, 5) },
       forceFinish: false,
+    })
+  }
+
+  function moveToIdx(
+    idx,
+    { forceFinish, duration = options.duration }
+  ) {
+    // forceFinish is used to ignore boundaries when rubberband movement is active
+    moveTo({
+      distance: trackGetIdxDistance(options.clampIndex(idx)),
+      duration,
+      easing: function easeOutQuint(t) { return 1 + --t * t * t * t * t },
+      forceFinish,
     })
   }
 
@@ -417,11 +450,18 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     trackSpeedAndDirection.measure(val, timestamp)
     // this complicates things: we ask it to `add` a value and then we `add` part of the value? (trackBoundsHandling + rubberband)
     trackPosition += drag && !options.isLoop ? trackBoundsHandling(val) : val
-    trackSetCurrentIdx(trackPosition)
+
+    const new_idx = options.calculateIndex(trackPosition)
+    if (new_idx !== trackCurrentIdx && !options.isIndexOutOfBounds(new_idx)) {
+      trackCurrentIdx = new_idx
+      hook('slideChanged')
+    }
+
     trackProgress = options.calculateTrackProgress(trackPosition)
-    // todo - option for not calculating slides that are not in sight
     trackSlidePositions = options.calculateSlidePositions(trackProgress)
+
     if (options.slides) slidesSetPositions(options.slides, trackSlidePositions)
+
     hook('move')
   }
 
@@ -475,20 +515,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     return rubberband
 
     function easingQuadLike(t) { return (1 - t) * (1 - t) }
-  }
-
-  function trackSetCurrentIdx(trackPosition) {
-    const new_idx = options.calculateIndex(trackPosition)
-    if (new_idx === trackCurrentIdx || options.isIndexOutOfBounds(new_idx)) return
-
-    trackCurrentIdx = new_idx
-    hook('slideChanged')
-  }
-
-  function trackSetPositionByIdx(idx) {
-    hook('beforeChange')
-    trackAdd(trackGetIdxDistance(idx), { drag: false })
-    hook('afterChange')
   }
 }
 
@@ -727,7 +753,8 @@ function BreakpointBasedOptions(initialOptions) {
        return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
      },
      calculateSlidePositions(trackProgress) {
-       const slidePositions = []
+      // todo - option for not calculating slides that are not in sight
+      const slidePositions = []
 
        const progress = (trackProgress < 0 && options.loop ? trackProgress + 1 : trackProgress)
        for (let idx = 0; idx < numberOfSlides; idx++) {
