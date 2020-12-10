@@ -1,7 +1,7 @@
 import './polyfills'
-import KeenSliderType, { TOptionsEvents } from '../index'
+import KeenSliderType, { TOptionsEvents, TOptions, TEvents } from '../index'
 
-/** @type {TOptionsEvents} */
+/** @type {TOptions} */
 const defaultOptions = {
   centered: false,
   breakpoints: null,
@@ -49,19 +49,17 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     resize() {
       sliderResize(true)
     },
-    controls: active => { // not sure if this is a valuable API
+    controls: active => { // not sure if this is a valuable API, seems to break on breakpoint change
       const newOptions = {
         ...breakpointBasedOptions.options,
         initial: slider.current.details().absoluteSlide,
         controls: active,
       }
-      slider.current.destroy()
-      slider.current = KeenSlider(initialContainer, newOptions, pubfuncs)
+      sliderReplace(newOptions)
     },
     refresh(options) { // this function should probably removed, it is simpler to just destroy and create a new instance
-      slider.current.destroy()
       breakpointBasedOptions = BreakpointBasedOptions(options || initialOptions)
-      slider.current = KeenSlider(initialContainer, breakpointBasedOptions.options, pubfuncs)
+      sliderReplace(breakpointBasedOptions.options)
     },
     next() { return slider.next() },
     prev() { return slider.prev() },
@@ -73,7 +71,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     },
     details() { return slider.current.details() },
   }
-  const slider = { current: KeenSlider(initialContainer, breakpointBasedOptions.options, pubfuncs) }
+  const slider = { current: sliderCreate(breakpointBasedOptions.options) }
 
   sliderInit()
 
@@ -81,7 +79,35 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
   function sliderInit() {
     eventAdd(window, 'resize', sliderResize)
-    slider.current.hook('created')
+    hook('created')
+  }
+
+  /** @param {TOptionsEvents} options */
+  function sliderCreate({ dragSpeed, ...options }) {
+    const modifiedOptions = {
+      ...options,
+      dragSpeed: typeof dragSpeed === 'function' ? val => dragSpeed(val, pubfuncs) : dragSpeed
+    }
+    return KeenSlider(initialContainer, modifiedOptions, hook)
+  }
+
+  function sliderReplace(options) {
+    slider.current.destroy()
+    slider.current = sliderCreate(options)
+  }
+
+  function hook(hook) {
+    const { options } = breakpointBasedOptions
+    // This is a complication, what if one of those methods decides to call 'destroy' or 'refresh'?
+    // If people want to use this, they could easily do it by keeping track of the slider instance,
+    // no need for us to supply it
+    //
+    // It is however quite handy to provide `details` in some case
+    //
+    // Note to self: think about 'hooks' vs 'function options', what is their relation? When to use what? Is there a relation with 'events'?
+    //
+    // Seems these are not hooks, because they don't influence behavior, they are actually events.
+    if (options[hook]) options[hook](pubfuncs)
   }
 
   function sliderResize(force = false) {
@@ -95,8 +121,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
         ? options
         : { ...options, initial: slider.current.details().absoluteSlide }
 
-      slider.current.destroy()
-      slider.current = KeenSlider(initialContainer, newOptions, pubfuncs)
+      sliderReplace(newOptions)
     } else {
       const windowWidth = window.innerWidth
       if (!force && windowWidth === resizeLastWidth) return
@@ -107,13 +132,11 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 }
 
 /**
- *
  * @param {HTMLElement} initialContainer
- * @param {TOptionsEvents} initialOptions
- * @param {KeenSliderType} pubfuncs // This is a complication, it is used for hooks and some other method calls, what if one of those methods decides to call 'destroy' or 'refresh'?
- *                                  // If people want to use this, they could easily do it by keeping track of the slider instance, no need for us to supply it
+ * @param {TOptions} initialOptions
+ * @param {(hook: keyof TEvents) => void} hook
  */
-function KeenSlider(initialContainer, initialOptions, pubfuncs) {
+function KeenSlider(initialContainer, initialOptions, hook) {
   const attributeMoving = 'data-keen-slider-moves'
   const attributeVertical = 'data-keen-slider-v'
 
@@ -246,7 +269,7 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function handleDrag(e, { distance }) {
-    trackAdd(options.touchMultiplicator(distance, pubfuncs), { isDrag: true, timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
+    trackAdd(options.touchMultiplicator(distance), { isDrag: true, timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
   }
 
   function handleDragStop(e) {
@@ -256,10 +279,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     options.dragEndMovement()
 
     hook('dragEnd')
-  }
-
-  function hook(hook) {
-    if (options[hook]) options[hook](pubfuncs)
   }
 
   function moveTo({ distance, duration, easing, forceFinish, cb = undefined }) {
@@ -596,7 +615,7 @@ function BreakpointBasedOptions(initialOptions) {
   *  updateSlidesAndNumberOfSlides(): void,
   *  slides: Array<HTMLElement> | null,
   *  numberOfSlides: number,
-  *  touchMultiplicator: (val: number, instance: KeenSliderType) => number,
+  *  touchMultiplicator: (val: number) => number,
   *  updateSlidesPerView(): void,
   *  slidesPerView: number,
   *  spacing: number,
@@ -677,7 +696,10 @@ function Options(options, { moveModes, container }) {
     get touchMultiplicator() {
       const { dragSpeed } = options
       const multiplicator = typeof dragSpeed === 'function' ? dragSpeed : val => val * dragSpeed
-      return (val, instance) => multiplicator(val, instance) * (!options.rtl ? 1 : -1)
+      return val =>
+        // @ts-ignore - we need to change the the types, we wrap the `dragSpeed` function so it does not require an instance anymore at this point
+        multiplicator(val) *
+        (!options.rtl ? 1 : -1)
     },
     updateSlidesPerView,
     get slidesPerView() {
