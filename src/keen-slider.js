@@ -43,8 +43,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
   const pubfuncs = {
     destroy() {
-      eventsRemove()
-      slider.current.destroy()
+      sliderDestroy()
     },
     resize() {
       sliderResize(true)
@@ -71,43 +70,43 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     },
     details() { return slider.current.details() },
   }
-  const slider = { current: sliderCreate(breakpointBasedOptions.options) }
+  const slider = { current: null }
 
   sliderInit()
 
   return pubfuncs
 
   function sliderInit() {
+    sliderCreate(breakpointBasedOptions.options)
     eventAdd(window, 'resize', sliderResize)
-    hook('created')
+    fireEvent('created')
   }
 
-  /** @param {TOptionsEvents} options */
+  function sliderDestroy() {
+    eventsRemove()
+    slider.current.destroy()
+    fireEvent('destroyed')
+  }
+
+  /** @param {TOptions} options */
   function sliderCreate({ dragSpeed, ...options }) {
     const modifiedOptions = {
       ...options,
       dragSpeed: typeof dragSpeed === 'function' ? val => dragSpeed(val, pubfuncs) : dragSpeed
     }
-    return KeenSlider(initialContainer, modifiedOptions, hook)
+    slider.current = KeenSlider(initialContainer, modifiedOptions, fireEvent)
+    slider.current.mount()
   }
 
   function sliderReplace(options) {
     slider.current.destroy()
-    slider.current = sliderCreate(options)
+    sliderCreate(options)
   }
 
-  function hook(hook) {
+  /** @param {keyof TEvents} event */
+  function fireEvent(event) {
     const { options } = breakpointBasedOptions
-    // This is a complication, what if one of those methods decides to call 'destroy' or 'refresh'?
-    // If people want to use this, they could easily do it by keeping track of the slider instance,
-    // no need for us to supply it
-    //
-    // It is however quite handy to provide `details` in some case
-    //
-    // Note to self: think about 'hooks' vs 'function options', what is their relation? When to use what? Is there a relation with 'events'?
-    //
-    // Seems these are not hooks, because they don't influence behavior, they are actually events.
-    if (options[hook]) options[hook](pubfuncs)
+    if (options[event]) options[event](pubfuncs)
   }
 
   function sliderResize(force = false) {
@@ -134,9 +133,9 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 /**
  * @param {HTMLElement} initialContainer
  * @param {TOptions} initialOptions
- * @param {(hook: keyof TEvents) => void} hook
+ * @param {(event: keyof TEvents) => void} fireEvent
  */
-function KeenSlider(initialContainer, initialOptions, hook) {
+function KeenSlider(initialContainer, initialOptions, fireEvent) {
   const attributeMoving = 'data-keen-slider-moves'
   const attributeVertical = 'data-keen-slider-v'
 
@@ -191,11 +190,11 @@ function KeenSlider(initialContainer, initialOptions, hook) {
   const track = Track({
     options,
     onIndexChanged() {
-      hook('slideChanged')
+      fireEvent('slideChanged')
     },
     onMove(trackSlidePositions) {
       if (options.slides) slidesSetPositions(options.slides, trackSlidePositions)
-      hook('move')
+      fireEvent('move')
     }
   })
 
@@ -204,9 +203,8 @@ function KeenSlider(initialContainer, initialOptions, hook) {
   // touch/swipe helper
   let touchIndexStart
 
-  sliderInit()
-
   return {
+    mount: sliderInit,
     destroy: sliderDestroy,
     next() {
       moveToIdx(track.currentIdx + 1, { forceFinish: true })
@@ -225,8 +223,6 @@ function KeenSlider(initialContainer, initialOptions, hook) {
       return trackGetDetails()
     },
     resize: sliderResize,
-    // exposed for now, during refactor, should probably be moved to wrapper
-    hook,
   }
 
   function sliderInit() {
@@ -234,7 +230,7 @@ function KeenSlider(initialContainer, initialOptions, hook) {
     if (options.isVerticalSlider) container.setAttribute(attributeVertical, 'true') // changed from true to 'true'
     sliderResize()
     if (options.isTouchable) dragHandling.startListening()
-    hook('mounted')
+    fireEvent('mounted')
   }
 
   function sliderDestroy() {
@@ -242,7 +238,6 @@ function KeenSlider(initialContainer, initialOptions, hook) {
     if (options.slides) slidesRemoveStyles()
     if (container && container.hasAttribute(attributeVertical))
       container.removeAttribute(attributeVertical) // this should also be in a request animation frame
-    hook('destroyed')
   }
 
   function sliderResize() {
@@ -251,16 +246,16 @@ function KeenSlider(initialContainer, initialOptions, hook) {
     options.measureContainer()
     if (options.slides) slidesSetWidthsOrHeights()
 
-    hook('beforeChange')
+    fireEvent('beforeChange')
     trackAdd(trackGetIdxDistance(options.clampIndex(track.currentIdx)), { isDrag: false })
-    hook('afterChange')
+    fireEvent('afterChange')
   }
 
   function handleDragStart(e) {
     animation.cancel()
     touchIndexStart = track.currentIdx
     trackAdd(0, { isDrag: true, timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
-    hook('dragStart')
+    fireEvent('dragStart')
   }
 
   function handleFirstDrag(e) {
@@ -275,10 +270,10 @@ function KeenSlider(initialContainer, initialOptions, hook) {
   function handleDragStop(e) {
     container.removeAttribute(attributeMoving)
 
-    hook('beforeChange')
+    fireEvent('beforeChange')
     options.dragEndMovement()
 
-    hook('dragEnd')
+    fireEvent('dragEnd')
   }
 
   function moveTo({ distance, duration, easing, forceFinish, cb = undefined }) {
@@ -287,7 +282,7 @@ function KeenSlider(initialContainer, initialOptions, hook) {
       onMoveComplete: ({ moved }) => {
         trackAdd(distance - moved, { isDrag: false })
         if (cb) return cb()
-        hook('afterChange')
+        fireEvent('afterChange')
       },
       onMove: ({ delta, stop }) => {
         // The 'stop' variants only occur in certain scenario's, we should eventually find a way
