@@ -159,7 +159,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     }
   })
   const dragHandling = DragHandling(container, options, {
-    isValidDragEvent: e => eventIsSlide(e),
     onDragStart: handleDragStart,
     onFirstDrag: handleFirstDrag,
     onDrag: handleDrag,
@@ -181,7 +180,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
 
   // touch/swipe helper
   let touchIndexStart
-  let clientTouchPoints
 
   sliderInit()
 
@@ -236,9 +234,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
   }
 
   function handleDragStart(e) {
-    const [touch] = e.targetTouches || []
-    if (touch) clientTouchPoints = ClientTouchPoints(options, touch)
-
     animation.cancel()
     touchIndexStart = track.currentIdx
     trackAdd(0, { isDrag: true, timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
@@ -261,17 +256,6 @@ function KeenSlider(initialContainer, initialOptions, pubfuncs) {
     options.dragEndMovement()
 
     hook('dragEnd')
-  }
-
-  function eventIsSlide(e) {
-    const [touch] = e.targetTouches || []
-    if (!touch) return true
-    if (!clientTouchPoints) return false
-
-    const { current: [a, b], previous: [previousA, previousB] } = clientTouchPoints.fromTouch(touch)
-    const isSlide = Math.abs(previousB - b) <= Math.abs(previousA - a)
-
-    return isSlide
   }
 
   function hook(hook) {
@@ -832,7 +816,6 @@ function ClientTouchPoints(options, initialTouch) {
 }
 
 function DragHandling(container, options, {
-  isValidDragEvent,
   onDragStart,
   onFirstDrag,
   onDrag,
@@ -844,6 +827,7 @@ function DragHandling(container, options, {
   let dragJustStarted = false
   let touchIdentifier = null
   let touchLastXOrY = 0
+  let clientTouchPoints
 
   return {
     startListening() { eventsAdd() },
@@ -872,12 +856,15 @@ function DragHandling(container, options, {
     dragJustStarted = true
     touchIdentifier = eventGetIdentifier(e.targetTouches)
 
+    const [touch] = e.targetTouches || []
+    if (touch) clientTouchPoints = ClientTouchPoints(options, touch)
+
     onDragStart(e)
   }
 
   function eventDrag(e) {
     if (!isDragging || touchIdentifier !== eventGetIdentifier(e.targetTouches)) return
-    if (dragJustStarted && !isValidDragEvent(e)) {
+    if (dragJustStarted && !eventIsSlideMovement(e)) {
       eventDragStop(e)
       return
     }
@@ -887,18 +874,18 @@ function DragHandling(container, options, {
     const distance = dragJustStarted ? 0 : touchLastXOrY - xOrY
     if (dragJustStarted) {
       onFirstDrag(e)
-      //trackSpeedAndDirection.reset()
-      //container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
       dragJustStarted = false
     }
     onDrag(e, { distance })
-    // trackAdd(options.touchMultiplicator(touchDistance, pubfuncs), { timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
+
     touchLastXOrY = xOrY
   }
 
   function eventDragStop(e) {
     if (!isDragging || touchIdentifier !== eventGetIdentifier(e.changedTouches)) return
     isDragging = false
+
+    // should we clear clientTouchPoints?
 
     onDragStop(e)
   }
@@ -920,6 +907,17 @@ function DragHandling(container, options, {
 
   function eventIsIgnoreTarget(target) {
     return target.hasAttribute(options.preventEventAttributeName)
+  }
+
+  function eventIsSlideMovement(e) {
+    const [touch] = e.targetTouches || []
+    if (!touch) return true
+    if (!clientTouchPoints) return false
+
+    const { current: [a, b], previous: [previousA, previousB] } = clientTouchPoints.fromTouch(touch)
+    const isSlide = Math.abs(previousB - b) <= Math.abs(previousA - a)
+
+    return isSlide
   }
 }
 
