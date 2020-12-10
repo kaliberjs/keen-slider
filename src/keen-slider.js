@@ -60,8 +60,8 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       breakpointBasedOptions = BreakpointBasedOptions(options || initialOptions)
       sliderReplace(breakpointBasedOptions.options)
     },
-    next() { return slider.next() },
-    prev() { return slider.prev() },
+    next() { return slider.current.next() },
+    prev() { return slider.current.prev() },
     moveToSlide(idx, duration = undefined) {
       return slider.current.moveToSlide(idx, duration)
     },
