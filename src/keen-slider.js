@@ -173,12 +173,6 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
   const [container] = getElements(initialContainer)
   const options = Options(initialOptions, {
     container,
-    moveModes: {
-      'free': moveFree,
-      'free-snap': moveSnapFree,
-      'snap': moveSnapOne,
-      'default': moveSnapOne,
-    }
   })
   const dragHandling = DragHandling(container, options, {
     onDragStart: handleDragStart,
@@ -247,98 +241,40 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
     if (options.slides) slidesSetWidthsOrHeights()
 
     fireEvent('beforeChange')
-    trackAdd(trackGetIdxDistance(options.clampIndex(track.currentIdx)), { isDrag: false })
+    measureAndMove(trackGetIdxDistance(options.clampIndex(track.currentIdx)), { isDrag: false })
     fireEvent('afterChange')
   }
 
-  function handleDragStart(e) {
+  function handleDragStart({ timeStamp }) {
     animation.cancel()
     touchIndexStart = track.currentIdx
-    trackAdd(0, { isDrag: true, timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
+    measureAndMove(0, { isDrag: true, timeStamp }) // note: was `drag: e.timeStamp`
     fireEvent('dragStart')
   }
 
-  function handleFirstDrag(e) {
+  function handleFirstDrag() {
     trackSpeedAndDirection.reset()
     container.setAttribute(attributeMoving, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
   }
 
-  function handleDrag(e, { distance }) {
-    trackAdd(options.touchMultiplicator(distance), { isDrag: true, timestamp: e.timeStamp }) // note: was `drag: e.timeStamp`
+  function handleDrag({ distance, timeStamp }) {
+    measureAndMove(options.touchMultiplicator(distance), { isDrag: true, timeStamp }) // note: was `drag: e.timeStamp`
   }
 
-  function handleDragStop(e) {
+  function handleDragStop() {
     container.removeAttribute(attributeMoving)
 
     fireEvent('beforeChange')
-    options.dragEndMovement()
+
+    const dragEndMoves = {
+      'free': moveFree,
+      'free-snap': moveSnapFree,
+      'snap': moveSnapOne,
+      'default': moveSnapOne,
+    }
+    dragEndMoves[options.mode] || dragEndMoves.default
 
     fireEvent('dragEnd')
-  }
-
-  function moveTo({ distance, duration, easing, forceFinish, cb = undefined }) {
-    animation.move({ distance, duration, easing,
-      // These callbacks are executed in an animation frame and should not perform DOM reads
-      onMoveComplete: ({ moved }) => {
-        trackAdd(distance - moved, { isDrag: false })
-        if (cb) return cb()
-        fireEvent('afterChange')
-      },
-      onMove: ({ delta, stop }) => {
-        // The 'stop' variants only occur in certain scenario's, we should eventually find a way
-        // figure out which scenario's. That would allow us to run all animations to completion
-        // unless they actually need to be canceled.
-        //
-        // To my naive brain it does not make sense to start an animation and decide midway:
-        // "oops, we should actually do something else"
-        const offset = track.calculateOutOfBoundsOffset(delta)
-        const isOutOfBounds = offset !== 0
-
-        if (isOutOfBounds && !forceFinish) {
-
-          if (!options.isRubberband && !options.isLoop) {
-            trackAdd(delta - offset, { isDrag: false })
-            return stop
-          }
-
-          if (options.isRubberband) {
-            moveRubberband()
-            return stop
-          }
-        }
-
-        trackAdd(delta, { isDrag: false })
-      }
-    })
-  }
-
-  function moveRubberband() {
-    // todo: refactor! working on it
-    const trackSpeed = trackSpeedAndDirection.speed
-    if (trackSpeed === 0) {
-      moveToIdx(track.currentIdx, { forceFinish: true })
-      return
-    }
-
-    const friction = 0.04 / Math.pow(Math.abs(trackSpeed), -0.5)
-    const distance = (Math.pow(trackSpeed, 2) / friction) * Math.sign(trackSpeed)
-
-    const easing = function cubicOut(t) { return --t * t * t + 1 }
-
-    moveTo({
-      distance,
-      duration: Math.abs(trackSpeed / friction) * 3,
-      easing,
-      forceFinish: true,
-      cb: () => {
-        moveTo({
-          distance: trackGetIdxDistance(options.clampIndex(track.currentIdx)),
-          duration: 500,
-          easing,
-          forceFinish: true,
-        })
-      }
-    })
   }
 
   function moveSnapOne() {
@@ -385,6 +321,71 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
       duration: Math.abs(trackSpeed / friction) * 6,
       easing: function easeOutQuint(t) { return 1 - Math.pow(1 - t, 5) },
       forceFinish: false,
+    })
+  }
+
+  function moveTo({ distance, duration, easing, forceFinish, cb = undefined }) {
+    animation.move({ distance, duration, easing,
+      // These callbacks are executed in an animation frame and should not perform DOM reads
+      onMoveComplete: ({ moved }) => {
+        measureAndMove(distance - moved, { isDrag: false })
+        if (cb) return cb()
+        fireEvent('afterChange')
+      },
+      onMove: ({ delta, stop }) => {
+        // The 'stop' variants only occur in certain scenario's, we should eventually find a way
+        // figure out which scenario's. That would allow us to run all animations to completion
+        // unless they actually need to be canceled.
+        //
+        // To my naive brain it does not make sense to start an animation and decide midway:
+        // "oops, we should actually do something else"
+        const offset = track.calculateOutOfBoundsOffset(delta)
+        const isOutOfBounds = offset !== 0
+
+        if (isOutOfBounds && !forceFinish) {
+
+          if (!options.isRubberband && !options.isLoop) {
+            measureAndMove(delta - offset, { isDrag: false })
+            return stop
+          }
+
+          if (options.isRubberband) {
+            moveRubberband()
+            return stop
+          }
+        }
+
+        measureAndMove(delta, { isDrag: false })
+      }
+    })
+  }
+
+  function moveRubberband() {
+    // todo: refactor! working on it
+    const trackSpeed = trackSpeedAndDirection.speed
+    if (trackSpeed === 0) {
+      moveToIdx(track.currentIdx, { forceFinish: true })
+      return
+    }
+
+    const friction = 0.04 / Math.pow(Math.abs(trackSpeed), -0.5)
+    const distance = (Math.pow(trackSpeed, 2) / friction) * Math.sign(trackSpeed)
+
+    const easing = function cubicOut(t) { return --t * t * t + 1 }
+
+    moveTo({
+      distance,
+      duration: Math.abs(trackSpeed / friction) * 3,
+      easing,
+      forceFinish: true,
+      cb: () => {
+        moveTo({
+          distance: trackGetIdxDistance(options.clampIndex(track.currentIdx)),
+          duration: 500,
+          easing,
+          forceFinish: true,
+        })
+      }
     })
   }
 
@@ -454,8 +455,8 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
     })
   }
 
-  function trackAdd(delta, { isDrag, timestamp = Date.now() }) {
-    trackSpeedAndDirection.measure(delta, timestamp)
+  function measureAndMove(delta, { isDrag, timeStamp = Date.now() }) {
+    trackSpeedAndDirection.measure(delta, timeStamp)
     track.move(delta, { isDrag })
   }
 
@@ -591,7 +592,6 @@ function BreakpointBasedOptions(initialOptions) {
  * @param {TOptionsEvents} options
  * @param {{
   *  container: any,
-  *  moveModes: Record<TOptionsEvents['mode'] | 'default', () => void>
   * }} x
   *
   * @returns {{
@@ -603,7 +603,6 @@ function BreakpointBasedOptions(initialOptions) {
   *  initialIndex: number,
   *  preventEventAttributeName: string,
   *  cancelOnLeave: boolean,
-  *  dragEndMovement: () => void,
   *  duration: number,
   *  friction: number,
   *  trackLength: number,
@@ -623,9 +622,10 @@ function BreakpointBasedOptions(initialOptions) {
   *  ensureIndexInBounds(idx: number): number,
   *  sizePerSlide: number,
   *  maxPosition: number,
+  *  mode: 'snap' | 'free' | 'free-snap',
   * }} // only here to help with refactoring
   */
-function Options(options, { moveModes, container }) {
+function Options(options, { container }) {
   // TODO: the functions in options make stuff complicated. We should probably remove them if they influence behavior
   // an example is the fact that options.slides can be a function. It would be better to destroy and recreate the slider,
   // at the moment of writing this comment, determining the slides is done during resize
@@ -665,14 +665,14 @@ function Options(options, { moveModes, container }) {
     get cancelOnLeave() {
       return options.cancelOnLeave
     },
-    get dragEndMovement() {
-      return moveModes[options.mode] || moveModes.default
-    },
     get duration() {
       return options.duration
     },
     get friction() {
       return options.friction
+    },
+    get mode() {
+      return options.mode
     },
     updateSlidesAndNumberOfSlides,
     get slides() {
@@ -772,7 +772,7 @@ function SpeedAndDirection() {
     get direction() { return trackDirection },
   }
 
-  function measure(val, timestamp) {
+  function measure(val, timeStamp) {
     // todo - improve measurement - it could be better for ios
     clearTimeout(trackMeasureTimeout)
 
@@ -782,7 +782,7 @@ function SpeedAndDirection() {
     trackDirection = direction
     trackMeasurePoints.push({
       distance: val,
-      time: timestamp,
+      time: timeStamp,
     })
     trackMeasureTimeout = setTimeout(
       () => {
@@ -876,7 +876,7 @@ function DragHandling(container, options, {
     const [touch] = e.targetTouches || []
     if (touch) clientTouchPoints = ClientTouchPoints(options, touch)
 
-    onDragStart(e)
+    onDragStart({ timeStamp: e.timeStamp })
   }
 
   function eventDrag(e) {
@@ -890,10 +890,10 @@ function DragHandling(container, options, {
     const xOrY = eventGetXOrY(e)
     const distance = dragJustStarted ? 0 : touchLastXOrY - xOrY
     if (dragJustStarted) {
-      onFirstDrag(e)
+      onFirstDrag({ timeStamp: e.timeStamp })
       dragJustStarted = false
     }
-    onDrag(e, { distance })
+    onDrag({ distance, timeStamp: e.timeStamp })
 
     touchLastXOrY = xOrY
   }
@@ -904,7 +904,7 @@ function DragHandling(container, options, {
 
     // should we clear clientTouchPoints?
 
-    onDragStop(e)
+    onDragStop({ timeStamp: e.timeStamp })
   }
 
   function eventGetIdentifier(touches) {
@@ -982,15 +982,15 @@ function Animation() {
   }
 
   function requestAnimationFrame(moveData) {
-    reqId = window.requestAnimationFrame(timestamp => moveAnimateUpdate(timestamp, moveData))
+    reqId = window.requestAnimationFrame(timeStamp => moveAnimateUpdate(timeStamp, moveData))
   }
 
-  function moveAnimateUpdate(timestamp, moveData) {
+  function moveAnimateUpdate(timeStamp, moveData) {
     inAnimationFrame = true
 
     const { distance, moved, duration, easing, onMove, onMoveComplete } = moveData
-    if (!startTime) startTime = timestamp
-    const elapsedTime = timestamp - startTime
+    if (!startTime) startTime = timeStamp
+    const elapsedTime = timeStamp - startTime
     if (elapsedTime >= duration) {
       if (onMoveComplete) onMoveComplete({ moved })
     } else {
