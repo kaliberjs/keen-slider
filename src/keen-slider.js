@@ -1,28 +1,6 @@
 import './polyfills'
 import KeenSliderType, { TOptionsEvents, TOptions, TEvents } from '../index'
-
-/**
- * @typedef {TEvents &
- *   {
- *     enableDragControls: boolean,
- *     touchMultiplicator(val: number): number,
- *     isLoop: boolean,
- *     isRubberband: boolean,
- *     isVerticalSlider: boolean,
- *     isRtl: boolean,
- *     isCentered: boolean,
- *     cancelOnLeave: boolean,
- *     initialIndex: number,
- *     preventEventAttributeName: string,
- *     duration: number,
- *     friction: number,
- *     dragEndMove: 'snap' | 'free-snap' | 'free',
- *     spacing: TOptions['spacing'],
- *     slides: TOptions['slides'],
- *     slidesPerView: TOptions['slidesPerView'],
- *   }
- * } ModifiedOptions
- */
+import { TranslatedOptionsType, DynamicOptionsType } from './internal'
 
 /** @type {TOptions} */
 const defaultOptions = {
@@ -155,7 +133,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
   }
 
   /** @param {TOptions} options
-   *  @returns {ModifiedOptions} */
+   *  @returns {TranslatedOptionsType} */
   function translateOptions({ dragSpeed, ...options }) {
     const dragSpeedMultiplicator = typeof dragSpeed === 'function'
       ? val => dragSpeed(val, publicApi)
@@ -211,7 +189,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
 /**
  * @param {HTMLElement} initialContainer
- * @param {ModifiedOptions} initialOptions
+ * @param {TranslatedOptionsType} initialOptions
  * @param {(event: keyof TEvents) => void} fireEvent
  */
 function KeenSlider(initialContainer, initialOptions, fireEvent) {
@@ -249,11 +227,10 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
     if we lose 'normal use' backwards compatibility.
   */
 
-  const [container] = getElements(initialContainer)
+  const [container] = getElements(initialContainer, document)
   const options = Options(initialOptions, { container })
-  const speedAndDirectionTracking = SpeedAndDirectionTracking()
   const slideManipulation = SlideManipulation({ options })
-  const track = Track({
+  const { readOnly: track, ...trackManipulation } = Track({
     options,
     onIndexChanged() {
       fireEvent('slideChanged')
@@ -267,9 +244,7 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
     }
   })
   const animatedMovement = AnimatedMovement({
-    options,
-    track,
-    speedAndDirectionTracking,
+    options, track,
     onMovement(distance) {
       measureAndMove(distance, { isDrag: false, currentlyInAnimationFrame: true })
     },
@@ -277,15 +252,15 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
       fireEvent('afterChange')
     }
   })
-  const dragHandling = DragHandling({
-    container, options, speedAndDirectionTracking, track,
+  const dragHandling = options.enableDragControls && DragHandling({
+    container, options, track,
     onDragStart({ timeStamp }) {
       animatedMovement.cancel()
-      speedAndDirectionTracking.measure(0, timeStamp)
+      trackManipulation.measureSpeedAndDirection(0, timeStamp)
       fireEvent('dragStart')
     },
     onFirstDrag() {
-      speedAndDirectionTracking.reset()
+      trackManipulation.resetSpeedAndDirectionTracking()
       writeToDOM.fromNonAnimationFrame(() => container.setAttribute(attributeDragging, 'true')) // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
     },
     onDrag({ distance, timeStamp }) {
@@ -309,12 +284,11 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
   return {
     mount: sliderInit,
     destroy: sliderDestroy,
-    next() {
-      animatedMovement.moveToIdx(track.currentIdx + 1)
-    },
-    prev() {
-      animatedMovement.moveToIdx(track.currentIdx - 1)
-    },
+    resize: sliderResize,
+
+    next() { animatedMovement.moveToIdx(track.currentIdx + 1) },
+    prev() { animatedMovement.moveToIdx(track.currentIdx - 1) },
+
     moveToSlide(idx, duration = options.duration) {
       animatedMovement.moveToIdx(idx, { duration })
     },
@@ -322,8 +296,8 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
       const idx = getRelativeIdx(relativeIdx, nearest)
       animatedMovement.moveToIdx(idx, { duration })
     },
-    details: getDetails,
-    resize: sliderResize,
+
+    details() { return track.details },
   }
 
   function sliderInit() {
@@ -334,13 +308,13 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
 
     sliderResize()
 
-    if (options.enableDragControls) dragHandling.startListening()
+    if (dragHandling) dragHandling.startListening()
 
     fireEvent('mounted')
   }
 
   function sliderDestroy() {
-    dragHandling.destroy()
+    if (dragHandling) dragHandling.stopListening()
 
     writeToDOM.fromNonAnimationFrame(() => {
       if (options.slides) slideManipulation.removeStyles()
@@ -354,31 +328,13 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
     if (options.slides) writeToDOM.fromNonAnimationFrame(slideManipulation.setWidthsOrHeights)
 
     fireEvent('beforeChange')
-    measureAndMove(track.calculateIndexDistance(track.currentIdx), { isDrag: false, currentlyInAnimationFrame: false })
+    measureAndMove(track.currentIndexDistance, { isDrag: false, currentlyInAnimationFrame: false })
     fireEvent('afterChange') // this event is probably fired twice
   }
 
   function measureAndMove(delta, { isDrag, timeStamp = Date.now(), currentlyInAnimationFrame }) {
-    speedAndDirectionTracking.measure(delta, timeStamp)
-    track.move(delta, { isDrag, currentlyInAnimationFrame })
-  }
-
-  function getDetails() {
-    const trackProgressAbs = Math.abs(track.progress)
-    const progress = track.position < 0 ? 1 - trackProgressAbs : trackProgressAbs
-    return {
-      direction: speedAndDirectionTracking.direction,
-      progressTrack: progress,
-      progressSlides: (progress * options.numberOfSlides) / (options.numberOfSlides - 1), // what if length is 1? devision by 0
-      positions: track.slidePositions,
-      position: track.position,
-      speed: speedAndDirectionTracking.speed,
-      relativeSlide: options.ensureIndexInBounds(track.currentIdx),
-      absoluteSlide: track.currentIdx,
-      size: options.numberOfSlides,
-      slidesPerView: options.slidesPerView,
-      widthOrHeight: options.widthOrHeight,
-    }
+    trackManipulation.measureSpeedAndDirection(delta, timeStamp)
+    trackManipulation.move(delta, { isDrag, currentlyInAnimationFrame })
   }
 
   // The logic in this function does not seem quite right, it seems to wrongly decide between
@@ -400,31 +356,22 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
   }
 }
 
-// helper functions
-
-/**
- * @param {NodeList} nodeList
- * @returns {Array<Node>}
- */
+/** @param {NodeList} nodeList
+ *  @returns {Array<HTMLElement>} */
 function convertToArray(nodeList) {
   return Array.prototype.slice.call(nodeList)
 }
 
-/**
- * @returns {Array<HTMLElement>}
- */
-function getElements(element, wrapper = document) {
-  return typeof element === 'function'
-    ? convertToArray(element())
-    : typeof element === 'string'
-    ? convertToArray(wrapper.querySelectorAll(element))
-    : element instanceof HTMLElement !== false
-    ? [element]
-    : element instanceof NodeList !== false
-    ? element
-    : []
+/** @returns {Array<HTMLElement>} */
+function getElements(element, wrapper) {
+  return (
+    typeof element === 'function'  ? convertToArray(element()) :
+    typeof element === 'string'    ? convertToArray(wrapper.querySelectorAll(element)) :
+    element instanceof HTMLElement ? [element] :
+    element instanceof NodeList    ? convertToArray(element) :
+    []
+  )
 }
-
 function clampValue(value, min, max) {
   return Math.min(Math.max(value, min), max)
 }
@@ -432,24 +379,21 @@ function clampValue(value, min, max) {
 function EventBookKeeper() {
   let events = []
 
-  return { eventAdd, eventsRemove }
-
-  function eventAdd(element, event, handler, options = {}) {
-    element.addEventListener(event, handler, options)
-    events.push([element, event, handler, options])
-  }
-
-  function eventsRemove() {
-    events.forEach(event => {
-      event[0].removeEventListener(event[1], event[2], event[3])
-    })
-    events = []
+  return {
+    eventAdd(element, event, handler, options = {}) {
+      element.addEventListener(event, handler, options)
+      events.push([element, event, handler, options])
+    },
+    eventsRemove() {
+      events.forEach(event => {
+        event[0].removeEventListener(event[1], event[2], event[3])
+      })
+      events = []
+    }
   }
 }
 
-/**
- * @param {TOptionsEvents} initialOptions
- */
+/** @param {TOptionsEvents} initialOptions */
 function BreakpointBasedOptions(initialOptions) {
   let currentBreakpoint = null
   let options = determineOptions(initialOptions)
@@ -488,27 +432,11 @@ function BreakpointBasedOptions(initialOptions) {
 }
 
 /**
- * @param {ModifiedOptions} options
- * @param {{
-  *  container: any,
-  * }} x
-  *
-  * @returns {ModifiedOptions & {
-  *  updateDynamicOptions(): void,
-  *  trackLength: number,
-  *  slides: Array<HTMLElement> | null,
-  *  numberOfSlides: number,
-  *  slidesPerView: number,
-  *  spacing: number,
-  *  widthOrHeight: number,
-  *  spacing: number,
-  *  origin: number,
-  *  sizePerSlide: number,
-  *  maxPosition: number,
-  *  isIndexOutOfBounds(idx: number): boolean,
-  *  ensureIndexInBounds(idx: number): number,
-  * }} // only here to help with refactoring
-  */
+ * @param {TranslatedOptionsType} options
+ * @param {{ container: any }} x
+ *
+ * @returns {TranslatedOptionsType & DynamicOptionsType}
+ */
 function Options(options, { container }) {
   // TODO: the functions in options make stuff complicated. We should probably remove them if they
   // influence behavior an example is the fact that options.slides can be a function. It would be
@@ -562,21 +490,20 @@ function Options(options, { container }) {
 
   function updateContainerBasedProperties() {
     containerSize = options.isVerticalSlider ? container.offsetHeight : container.offsetWidth
-    spacing = clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
+    spacing       = clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
     widthOrHeight = containerSize + spacing
-    sizePerSlide = widthOrHeight / slidesPerView
-    origin = options.isCentered
+    sizePerSlide  = widthOrHeight / slidesPerView
+    origin        = options.isCentered
       ? (widthOrHeight / 2 - sizePerSlide / 2) / widthOrHeight
       : 0
   }
 
   function updateSlidesAndNumberOfSlides() { // side effects should be removed in a later stage
-    const optionSlides = options.slides
-    if (typeof optionSlides === 'number') {
-      slides = null
-      numberOfSlides = optionSlides
+    if (typeof options.slides === 'number') {
+      slides         = null
+      numberOfSlides = options.slides
     } else {
-      slides = getElements(optionSlides, container)
+      slides         = getElements(options.slides, container)
       numberOfSlides = slides ? slides.length : 0
     }
   }
@@ -601,53 +528,57 @@ function Options(options, { container }) {
 
 function SpeedAndDirectionTracking() {
 
-  let trackMeasurePoints = []
-  let trackDirection
-  let trackMeasureTimeout
-  let trackSpeed
+  let measurePoints = []
+  let direction
+  let measureTimeout
+  let speed
 
   return {
     measure,
     reset,
-    get speed() { return trackSpeed },
-    get direction() { return trackDirection },
+    get speed()     { return speed },
+    get direction() { return direction },
   }
 
   function measure(val, timeStamp) {
     // todo - improve measurement - it could be better for ios
-    clearTimeout(trackMeasureTimeout)
+    clearTimeout(measureTimeout)
 
-    const direction = Math.sign(val)
-    if (direction !== trackDirection) trackMeasurePoints = []
+    const newDirection = Math.sign(val)
+    if (direction !== newDirection) {
+      measurePoints = []
+      direction = newDirection
+    }
 
-    trackDirection = direction
-    trackMeasurePoints.push({
+    measurePoints.push({
       distance: val,
       time: timeStamp,
     })
-    trackMeasureTimeout = setTimeout(
+    measurePoints = measurePoints.slice(-6)
+
+    measureTimeout = setTimeout(
       () => {
-        trackMeasurePoints = []
-        trackSpeed = 0
+        measurePoints = []
+        speed = 0
       },
       50
     )
-    trackMeasurePoints = trackMeasurePoints.slice(-6)
-    if (trackMeasurePoints.length <= 1 || trackDirection === 0) {
-      trackSpeed = 0
-      return
-    }
 
-    const distance = trackMeasurePoints
-      .slice(0, -1)
-      .reduce((acc, next) => acc + next.distance, 0)
-    const end = trackMeasurePoints[trackMeasurePoints.length - 1].time
-    const start = trackMeasurePoints[0].time
-    trackSpeed = clampValue(distance / (end - start), -10, 10)
+    speed = (measurePoints.length <= 1 || direction === 0) ? 0 : determineSpeed(measurePoints)
   }
 
   function reset() {
-    trackMeasurePoints = []
+    measurePoints = []
+    // should we reset the speed and direction as well?
+  }
+
+  function determineSpeed(measurePoints) {
+    const distance = measurePoints
+      .slice(0, -1)
+      .reduce((acc, next) => acc + next.distance, 0)
+    const end = measurePoints[measurePoints.length - 1].time
+    const start = measurePoints[0].time
+    return clampValue(distance / (end - start), -10, 10)
   }
 }
 
@@ -681,20 +612,20 @@ function TouchHandling(container, options, {
 }) {
   const { eventAdd, eventsRemove } = EventBookKeeper()
 
-  let isDragging = false
+  let isDragging      = false
   let dragJustStarted = false
   let touchIdentifier = null
-  let touchLastXOrY = 0
+  let touchLastXOrY   = 0
   let clientTouchPoints
 
   return {
-    startListening() { eventsAdd() },
-    destroy() { eventsRemove() },
+    startListening: eventsAdd,
+    stopListening : eventsRemove,
   }
 
   function eventsAdd() {
     eventAdd(container, 'dragstart', e => { e.preventDefault() })
-    eventAdd(window, 'wheel', e => { if (isDragging) e.preventDefault() }, { passive: false })
+    eventAdd(window   , 'wheel', e => { if (isDragging) e.preventDefault() }, { passive: false })
 
     eventAdd(container, 'mousedown', eventDragStart)
     eventAdd(container, 'touchstart', eventDragStart, { passive: true })
@@ -703,14 +634,15 @@ function TouchHandling(container, options, {
     eventAdd(container, 'touchmove', eventDrag, { passive: false })
 
     if (options.cancelOnLeave) eventAdd(container, 'mouseleave', eventDragStop)
-    eventAdd(window, 'mouseup', eventDragStop)
+    eventAdd(window   , 'mouseup', eventDragStop)
     eventAdd(container, 'touchend', eventDragStop, { passive: true })
     eventAdd(container, 'touchcancel', eventDragStop, { passive: true })
   }
 
   function eventDragStart(e) {
     if (isDragging || eventIsIgnoreTarget(e.target)) return
-    isDragging = true
+
+    isDragging      = true
     dragJustStarted = true
     touchIdentifier = eventGetIdentifier(e.targetTouches)
 
@@ -791,18 +723,9 @@ function Animation() {
   let startTime
   let currentlyInAnimationFrame = false
 
-  return {
-    move,
-    cancel,
-  }
+  return { move, cancel }
 
-  function move({
-    distance,
-    duration,
-    easing,
-    onMove,
-    onMoveComplete = undefined,
-  }) {
+  function move({ distance, duration, easing, onMove, onMoveComplete = undefined }) {
     cancelAnimationFrame()
     requestAnimationFrame({ distance, moved: 0, duration, easing, onMove, onMoveComplete })
   }
@@ -845,12 +768,12 @@ function Animation() {
 
 /**
  * @param {{
- *  options: ReturnType<Options>,
- *  onIndexChanged: (newIndex: number) => void,
- *  onMove: (_: {
+ *  options: TranslatedOptionsType & DynamicOptionsType,
+ *  onIndexChanged(newIndex: number): void,
+ *  onMove(_: {
  *    slidePositions: Array<{ portion: number, distance: number }>,
  *    currentlyInAnimationFrame: boolean,
- *  }) => void
+ *  }): void
  * }} params
  */
 function Track({ options, onIndexChanged, onMove }) {
@@ -864,6 +787,8 @@ function Track({ options, onIndexChanged, onMove }) {
     isIndexOutOfBounds, numberOfSlides
   } = options
 
+  const speedAndDirectionTracking = SpeedAndDirectionTracking()
+
   let currentIdx = initialIndex
   let position = 0
   let slidePositions
@@ -871,21 +796,34 @@ function Track({ options, onIndexChanged, onMove }) {
 
   return {
     move,
-    calculateOutOfBoundsOffset,
-    calculateIndexDistance,
-    get currentIdx() { return currentIdx },
-    get position() { return position },
-    get slidePositions() { return slidePositions },
-    get progress() { return progress },
+    measureSpeedAndDirection:       speedAndDirectionTracking.measure,
+    resetSpeedAndDirectionTracking: speedAndDirectionTracking.reset,
+    get readOnly() {
+      return {
+        calculateOutOfBoundsOffset,
+        calculateIndexDistance,
+        get currentIndexDistance() { return calculateIndexDistance(currentIdx) },
+
+        get currentIdx()     { return currentIdx },
+        get position()       { return position },
+        get slidePositions() { return slidePositions },
+        get progress()       { return progress },
+
+        get speed()     { return speedAndDirectionTracking.speed },
+        get direction() { return speedAndDirectionTracking.direction },
+
+        get details() { return getDetails() },
+      }
+    }
   }
 
   function move(delta, { isDrag, currentlyInAnimationFrame }) {
     position += isDrag && !isLoop ? adjustDragMovement(delta) : delta
 
-    const new_idx = calculateIndex(position)
-    if (new_idx !== currentIdx && !isIndexOutOfBounds(new_idx)) {
-      currentIdx = new_idx
-      onIndexChanged(new_idx)
+    const newIndex = calculateIndex(position)
+    if (newIndex !== currentIdx && !isIndexOutOfBounds(newIndex)) {
+      currentIdx = newIndex
+      onIndexChanged(newIndex)
     }
 
     progress = calculateTrackProgress(position)
@@ -921,7 +859,6 @@ function Track({ options, onIndexChanged, onMove }) {
 
   function calculateOutOfBoundsOffset(delta) {
     const newPosition = position + delta
-
     return (
       newPosition > trackLength ? newPosition - trackLength :
       newPosition < 0           ? newPosition :
@@ -970,17 +907,51 @@ function Track({ options, onIndexChanged, onMove }) {
     }
     return slidePositions
   }
+
+  function getDetails() {
+    const trackProgressAbs = Math.abs(progress)
+    const normalizedProgress = position < 0 ? 1 - trackProgressAbs : trackProgressAbs
+
+    // note to self: check these properties, you broke backwards compatibility (for example widthOrHeight)
+    return {
+      direction:      speedAndDirectionTracking.direction,
+      progressTrack:  normalizedProgress,
+      progressSlides: (normalizedProgress * options.numberOfSlides) / (options.numberOfSlides - 1), // what if length is 1? devision by 0
+      positions:      slidePositions,
+      position:       position,
+      speed:          speedAndDirectionTracking.speed,
+      relativeSlide:  options.ensureIndexInBounds(currentIdx),
+      absoluteSlide:  currentIdx,
+      size:           options.numberOfSlides,
+      slidesPerView:  options.slidesPerView,
+      widthOrHeight:  options.widthOrHeight,
+    }
+  }
 }
 
+/**
+ * @param {{
+ *   container: any,
+ *   options: TranslatedOptionsType & DynamicOptionsType,
+ *   track: ReturnType<Track>['readOnly'],
+ *   onDragStart(_: { timeStamp: number }): void,
+ *   onFirstDrag(_: { timeStamp: number }): void,
+ *   onDrag(_: { distance: number, timeStamp: number }): void,
+ *   onDragStop(_: { moveTo: { distance: number, duration: number } }): void,
+ * }} params
+ */
 function DragHandling({
-    container, options,
-    track, speedAndDirectionTracking,
-    onDragStart,
-    onFirstDrag,
-    onDrag,
-    onDragStop,
+    container, options, track,
+    onDragStart, onFirstDrag, onDrag, onDragStop,
 }) {
   let touchIndexStart
+
+  const dragEndMoves = {
+    'free':      moveFree,
+    'free-snap': moveSnapFree,
+    'snap':      moveSnapOne,
+    'default':   moveSnapOne,
+  }
 
   const touchHandling = TouchHandling(container, options, {
     onDragStart({ timeStamp }) {
@@ -996,16 +967,10 @@ function DragHandling({
 
   return {
     startListening: touchHandling.startListening,
-    destroy: touchHandling.destroy,
+    stopListening : touchHandling.stopListening,
   }
 
   function handleDragStop() {
-    const dragEndMoves = {
-      'free': moveFree,
-      'free-snap': moveSnapFree,
-      'snap': moveSnapOne,
-      'default': moveSnapOne,
-    }
     const dragEndMove = dragEndMoves[options.dragEndMove] || dragEndMoves.default
 
     const { distance = 0, duration = options.duration } = dragEndMove()
@@ -1013,57 +978,53 @@ function DragHandling({
   }
 
   function moveSnapOne() {
-    const trackDirection = speedAndDirectionTracking.direction
-    const startIndex =
-      options.slidesPerView === 1 && trackDirection !== 0
+    const direction = track.direction
+    const startIndex = options.slidesPerView === 1 && direction !== 0
         ? touchIndexStart
         : track.currentIdx
-    return { distance: track.calculateIndexDistance(startIndex + trackDirection) }
+    return { distance: track.calculateIndexDistance(startIndex + direction) }
   }
 
   function moveFree() {
     // todo: refactor! working on it
-    const trackSpeed = speedAndDirectionTracking.speed
-    if (trackSpeed === 0) {
+    const speed = track.speed
+    if (speed === 0) {
       const isOutOfBounds = track.calculateOutOfBoundsOffset(0) !== 0
       return isOutOfBounds && !options.isLoop
-        ? { distance: track.calculateIndexDistance(track.currentIdx) }
+        ? { distance: track.currentIndexDistance }
         : { distance: 0 }
     }
-    const friction = options.friction / Math.pow(Math.abs(trackSpeed), -0.5)
 
+    const friction = options.friction / Math.pow(Math.abs(speed), -0.5)
     return {
-      distance: (Math.pow(trackSpeed, 2) / friction) * Math.sign(trackSpeed),
-      duration: Math.abs(trackSpeed / friction) * 6,
+      distance: (Math.pow(speed, 2) / friction) * Math.sign(speed),
+      duration: Math.abs(speed / friction) * 6,
     }
   }
 
   function moveSnapFree() {
-    // todo: refactor! working on it
-    const { speed: trackSpeed, direction: trackDirection } = speedAndDirectionTracking
-    if (trackSpeed === 0) {
-      return { distance: track.calculateIndexDistance(track.currentIdx) }
-    }
+    if (track.speed === 0) return { distance: track.currentIndexDistance }
 
-    const friction = options.friction / Math.pow(Math.abs(trackSpeed), -0.5)
-    const distance = (Math.pow(trackSpeed, 2) / friction) * Math.sign(trackSpeed)
-    const idx_trend = (track.position + distance) / options.sizePerSlide
-    const idx = trackDirection === -1 ? Math.floor(idx_trend) : Math.ceil(idx_trend)
-
+    const friction = options.friction / Math.pow(Math.abs(track.speed), -0.5)
+    const distance = (Math.pow(track.speed, 2) / friction) * Math.sign(track.speed)
+    const idxTrend = (track.position + distance) / options.sizePerSlide
+    const idx      = track.direction === -1 ? Math.floor(idxTrend) : Math.ceil(idxTrend)
     return {
       distance: idx * options.sizePerSlide - track.position,
-      duration: Math.abs(trackSpeed / friction) * 6,
+      duration: Math.abs(track.speed / friction) * 6,
     }
   }
 }
 
-function AnimatedMovement({
-  options,
-  track,
-  speedAndDirectionTracking,
-  onMovementComplete,
-  onMovement,
-}) {
+/**
+ * @param {{
+ *   options: TranslatedOptionsType,
+ *   track: ReturnType<Track>['readOnly'],
+ *   onMovementComplete(): void,
+ *   onMovement(distance: number): void,
+ * }} params
+ */
+function AnimatedMovement({ options, track, onMovementComplete, onMovement }) {
   const animation = Animation()
 
   return {
@@ -1101,9 +1062,8 @@ function AnimatedMovement({
           }
 
           if (options.isRubberband) {
-            const trackSpeed = speedAndDirectionTracking.speed
-            if (trackSpeed === 0) moveToIdx(track.currentIdx)
-            else moveRubberband(trackSpeed)
+            if (track.speed === 0) moveToIdx(track.currentIdx)
+            else moveRubberband(track.speed)
 
             return stop
           }
@@ -1114,21 +1074,21 @@ function AnimatedMovement({
     })
   }
 
-  function moveRubberband(trackSpeed) {
+  function moveRubberband(speed) {
     // todo: refactor! working on it
-    const friction = 0.04 / Math.pow(Math.abs(trackSpeed), -0.5)
-    const distance = (Math.pow(trackSpeed, 2) / friction) * Math.sign(trackSpeed)
+    const friction = 0.04 / Math.pow(Math.abs(speed), -0.5)
+    const distance = (Math.pow(speed, 2) / friction) * Math.sign(speed)
 
     const easing = function cubicOut(t) { return --t * t * t + 1 }
 
     moveTo({
       distance,
-      duration: Math.abs(trackSpeed / friction) * 3,
+      duration: Math.abs(speed / friction) * 3,
       easing,
       forceFinish: true,
       onMoveComplete() {
         moveTo({
-          distance: track.calculateIndexDistance(track.currentIdx),
+          distance: track.currentIndexDistance,
           duration: 500,
           easing,
           forceFinish: true,
