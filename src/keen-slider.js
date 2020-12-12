@@ -2,6 +2,9 @@ import './polyfills'
 import KeenSliderType, { TOptionsEvents, TOptions, TEvents } from '../index'
 import { TranslatedOptionsType, DynamicOptionsType } from './internal'
 
+// note to self: reorganise the order of the code (functions)
+// the order of usage should be reflect in the position of the functions
+
 /** @type {TOptions} */
 const defaultOptions = {
   centered: false,
