@@ -46,6 +46,38 @@ const defaultOptions = {
   cancelOnLeave: true
 }
 
+/*
+  This construct is here to make sure we think about the context when writing to the DOM.
+
+  The general rule is:
+  - do not read from the DOM inside of an animation frame
+  - do not write to the DOM outside of an animation frame
+
+  The reason for this is that reads from the DOM could cause a trigger of expensive layout
+  calculations. This is because the browser will ensure that the values you read are actually
+  correct. The expensive calculation will only be triggered if the related values are actually
+  changed since the last paint.
+
+  So to ensure we never have this problem, we ensure the writes (changing values) to be in the
+  part of the frame that is executed right before the layout / paint. Reads should never be done
+  from inside of an animation frame; you never know what other animation frames have been requested
+  and have performed writes already.
+
+  This shows the effect of calling `requestAnimationFrame` at different positions:
+
+  | non animation frame | animation frame | layout / paint | non animation frame | animation frame |
+  |         1->         |    ->1 2->      | -------------- |                     |       ->2       |
+
+  Calling `requestAnimationFrame` from a non animation frame causes the code to be executed in the
+  same frame, but at the end of the frame, right before layout / paint.
+  Calling `requestAnimationFrame` from an animation frame casues the code the be executed at the
+  end of the next frame.
+*/
+const writeToDOM = {
+  fromAnimationFrame(f) { f() },
+  fromNonAnimationFrame(f) { window.requestAnimationFrame(f) }
+}
+
 /**
  * @template T
  * @typedef {(keyof T)[]} ObjectKeys
@@ -218,26 +250,28 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
   */
 
   const [container] = getElements(initialContainer)
-  const options = Options(initialOptions, {
-    container,
-  })
+  const options = Options(initialOptions, { container })
   const speedAndDirectionTracking = SpeedAndDirectionTracking()
+  const slideManipulation = SlideManipulation({ options })
   const track = Track({
     options,
     onIndexChanged() {
       fireEvent('slideChanged')
     },
-    onMove(trackSlidePositions) {
-      if (options.slides) slidesSetPositions(options.slides, trackSlidePositions)
+    onMove({ slidePositions, currentlyInAnimationFrame }) {
+      if (options.slides) {
+        const context = currentlyInAnimationFrame ? 'fromAnimationFrame' : 'fromNonAnimationFrame'
+        writeToDOM[context](() => slideManipulation.setPositions(slidePositions))
+      }
       fireEvent('move')
     }
   })
-  const movement = Movement({
+  const animatedMovement = AnimatedMovement({
     options,
     track,
     speedAndDirectionTracking,
     onMovement(distance) {
-      measureAndMove(distance, { isDrag: false })
+      measureAndMove(distance, { isDrag: false, currentlyInAnimationFrame: true })
     },
     onMovementComplete() {
       fireEvent('afterChange')
@@ -246,26 +280,22 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
   const dragHandling = DragHandling({
     container, options, speedAndDirectionTracking, track,
     onDragStart({ timeStamp }) {
-      movement.cancel()
+      animatedMovement.cancel()
       speedAndDirectionTracking.measure(0, timeStamp)
       fireEvent('dragStart')
     },
     onFirstDrag() {
       speedAndDirectionTracking.reset()
-      window.requestAnimationFrame(() => {
-        container.setAttribute(attributeDragging, 'true') // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
-      })
+      writeToDOM.fromNonAnimationFrame(() => container.setAttribute(attributeDragging, 'true')) // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
     },
     onDrag({ distance, timeStamp }) {
-      measureAndMove(distance, { isDrag: true, timeStamp }) // note: was `drag: e.timeStamp`
+      measureAndMove(distance, { isDrag: true, timeStamp, currentlyInAnimationFrame: false }) // note: was `drag: e.timeStamp`
     },
     onDragStop({ moveTo: { distance, duration } }) {
-      window.requestAnimationFrame(() => {
-        container.removeAttribute(attributeDragging)
-      })
+      writeToDOM.fromNonAnimationFrame(() => container.removeAttribute(attributeDragging))
       if (distance) {
         fireEvent('beforeChange')
-        movement.moveTo({
+        animatedMovement.moveTo({
           distance,
           duration,
           forceFinish: false
@@ -280,107 +310,60 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
     mount: sliderInit,
     destroy: sliderDestroy,
     next() {
-      movement.moveToIdx(track.currentIdx + 1)
+      animatedMovement.moveToIdx(track.currentIdx + 1)
     },
     prev() {
-      movement.moveToIdx(track.currentIdx - 1)
+      animatedMovement.moveToIdx(track.currentIdx - 1)
     },
     moveToSlide(idx, duration = options.duration) {
-      movement.moveToIdx(idx, { duration })
+      animatedMovement.moveToIdx(idx, { duration })
     },
     moveToSlideRelative(relativeIdx, nearest = false, duration = options.duration) {
-      const idx = trackGetRelativeIdx(relativeIdx, nearest)
-      movement.moveToIdx(idx, { duration })
+      const idx = getRelativeIdx(relativeIdx, nearest)
+      animatedMovement.moveToIdx(idx, { duration })
     },
-    details() {
-      return trackGetDetails()
-    },
+    details: getDetails,
     resize: sliderResize,
   }
 
   function sliderInit() {
     if (!container) return // this should probably throw an error, but there might be a use case, not sure
-    if (options.isVerticalSlider) container.setAttribute(attributeVertical, 'true') // changed from true to 'true'
+
+    if (options.isVerticalSlider)
+      writeToDOM.fromNonAnimationFrame(() => container.setAttribute(attributeVertical, 'true'))
+
     sliderResize()
+
     if (options.enableDragControls) dragHandling.startListening()
+
     fireEvent('mounted')
   }
 
   function sliderDestroy() {
     dragHandling.destroy()
-    if (options.slides) slidesRemoveStyles()
-    if (container && container.hasAttribute(attributeVertical))
-      container.removeAttribute(attributeVertical) // this should also be in a request animation frame
+
+    writeToDOM.fromNonAnimationFrame(() => {
+      if (options.slides) slideManipulation.removeStyles()
+      if (container && container.hasAttribute(attributeVertical))
+        container.removeAttribute(attributeVertical)
+    })
   }
 
   function sliderResize() {
     options.updateDynamicOptions()
-    if (options.slides) slidesSetWidthsOrHeights()
+    if (options.slides) writeToDOM.fromNonAnimationFrame(slideManipulation.setWidthsOrHeights)
 
     fireEvent('beforeChange')
-    measureAndMove(track.calculateIndexDistance(track.currentIdx), { isDrag: false })
-    fireEvent('afterChange')
+    measureAndMove(track.calculateIndexDistance(track.currentIdx), { isDrag: false, currentlyInAnimationFrame: false })
+    fireEvent('afterChange') // this event is probably fired twice
   }
 
-  function slidesSetPositions(slides, slidePositions) {
-    slides.forEach((slide, idx) => {
-      const { distance } = slidePositions[idx]
-
-      const absoluteDistance = distance * options.widthOrHeight
-      const pos =
-        absoluteDistance -
-        idx *
-          // this bit can be moved to options as soon as I can think of a name:
-          (
-            options.sizePerSlide -
-            options.spacing / options.slidesPerView -
-            (options.spacing / options.slidesPerView) *
-            (options.slidesPerView - 1)
-          )
-
-      const [a, b] = options.isVerticalSlider ? [0, pos] : [pos, 0]
-
-      const transformString = `translate3d(${a}px, ${b}px, 0)`
-      // these writes should be in a request animation frame
-      // they might be depending on who is moving
-      // if it is by drag they are not in an animation frame, if it is by animation they are
-      // so we need some form of construct to handle this
-      slide.style.transform = transformString
-      slide.style['-webkit-transform'] = transformString
-    })
-  }
-
-  function slidesSetWidthsOrHeights() {
-    const prop = options.isVerticalSlider ? 'height' : 'width'
-    options.slides.forEach(slide => {
-      // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
-      // hmm, it seems this is not really how it currently works. The number of slides, slidesPerView and container size determines this
-      const style = `calc(${100 / options.slidesPerView}% - ${
-        (options.spacing / options.slidesPerView) * (options.slidesPerView - 1)
-      }px)`
-      // these writes should be in a request animation frame
-      slide.style[`min-${prop}`] = style
-      slide.style[`max-${prop}`] = style
-    })
-  }
-
-  function slidesRemoveStyles() {
-    const prop = options.isVerticalSlider ? 'height' : 'width'
-    const styles = ['transform', '-webkit-transform', `min-${prop}`, `max-${prop}`]
-    options.slides.forEach(slide => {
-      styles.forEach(style => {
-        // this write should be in a request animation frame
-        slide.style.removeProperty(style)
-      })
-    })
-  }
-
-  function measureAndMove(delta, { isDrag, timeStamp = Date.now() }) {
+  function measureAndMove(delta, { isDrag, timeStamp = Date.now(), currentlyInAnimationFrame }) {
     speedAndDirectionTracking.measure(delta, timeStamp)
-    track.move(delta, { isDrag })
+    track.move(delta, { isDrag, currentlyInAnimationFrame })
   }
 
-  function trackGetDetails() {
+  function getDetails() {
     const trackProgressAbs = Math.abs(track.progress)
     const progress = track.position < 0 ? 1 - trackProgressAbs : trackProgressAbs
     return {
@@ -400,7 +383,7 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
 
   // The logic in this function does not seem quite right, it seems to wrongly decide between
   // left and right by comparing (the normalized) idx to the current position
-  function trackGetRelativeIdx(idx, nearest) {
+  function getRelativeIdx(idx, nearest) {
     const relativeIdx = options.ensureIndexInBounds(idx) // here we lose the direction
     const current = options.ensureIndexInBounds(track.currentIdx)
     const left = current < relativeIdx
@@ -411,7 +394,7 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
       : relativeIdx - current
     const add = (
       nearest ? (Math.abs(left) <= right ? left : right) :
-      relativeIdx < current ? left :  right // here we decide left or right based on the abs value of the relative index
+      relativeIdx < current ? left : right // here we decide left or right based on the abs value of the relative index
     )
     return track.currentIdx + add
   }
@@ -527,9 +510,10 @@ function BreakpointBasedOptions(initialOptions) {
   * }} // only here to help with refactoring
   */
 function Options(options, { container }) {
-  // TODO: the functions in options make stuff complicated. We should probably remove them if they influence behavior
-  // an example is the fact that options.slides can be a function. It would be better to destroy and recreate the slider,
-  // at the moment of writing this comment, determining the slides is done during resize
+  // TODO: the functions in options make stuff complicated. We should probably remove them if they
+  // influence behavior an example is the fact that options.slides can be a function. It would be
+  // better to destroy and recreate the slider, at the moment of writing this comment, determining
+  // the slides is done during resize
 
   // these constructs will probably be removed, but they make some side effects more obvious in this stage
   // note to self: check if you can refactor them to the outside of this component, so that the option functions
@@ -586,7 +570,7 @@ function Options(options, { container }) {
       : 0
   }
 
-  function updateSlidesAndNumberOfSlides() { // side effects should go later on
+  function updateSlidesAndNumberOfSlides() { // side effects should be removed in a later stage
     const optionSlides = options.slides
     if (typeof optionSlides === 'number') {
       slides = null
@@ -805,7 +789,7 @@ function Animation() {
 
   let reqId
   let startTime
-  let inAnimationFrame = false
+  let currentlyInAnimationFrame = false
 
   return {
     move,
@@ -816,7 +800,6 @@ function Animation() {
     distance,
     duration,
     easing,
-    // TODO: make sure there is no DOM reading here (also check option calls)
     onMove,
     onMoveComplete = undefined,
   }) {
@@ -826,7 +809,7 @@ function Animation() {
 
   function cancel() {
     // depending on the requirements this might change later on
-    if (inAnimationFrame) throw new Error(`Currently can not cancel from within 'onMove' or 'onMoveComplete'`)
+    if (currentlyInAnimationFrame) throw new Error(`Currently can not cancel from within 'onMove' or 'onMoveComplete'`)
     cancelAnimationFrame()
   }
 
@@ -843,7 +826,7 @@ function Animation() {
   }
 
   function moveAnimateUpdate(timeStamp, moveData) {
-    inAnimationFrame = true
+    currentlyInAnimationFrame = true
 
     const { distance, moved, duration, easing, onMove, onMoveComplete } = moveData
     if (!startTime) startTime = timeStamp
@@ -856,7 +839,7 @@ function Animation() {
       if (result !== stopSignal) requestAnimationFrame({ ...moveData, moved: moved + delta })
     }
 
-    inAnimationFrame = false
+    currentlyInAnimationFrame = false
   }
 }
 
@@ -864,7 +847,10 @@ function Animation() {
  * @param {{
  *  options: ReturnType<Options>,
  *  onIndexChanged: (newIndex: number) => void,
- *  onMove: (slidePositions: Array<{ portion: number, distance: number }>) => void
+ *  onMove: (_: {
+ *    slidePositions: Array<{ portion: number, distance: number }>,
+ *    currentlyInAnimationFrame: boolean,
+ *  }) => void
  * }} params
  */
 function Track({ options, onIndexChanged, onMove }) {
@@ -893,7 +879,7 @@ function Track({ options, onIndexChanged, onMove }) {
     get progress() { return progress },
   }
 
-  function move(delta, { isDrag }) {
+  function move(delta, { isDrag, currentlyInAnimationFrame }) {
     position += isDrag && !isLoop ? adjustDragMovement(delta) : delta
 
     const new_idx = calculateIndex(position)
@@ -905,7 +891,7 @@ function Track({ options, onIndexChanged, onMove }) {
     progress = calculateTrackProgress(position)
     slidePositions = calculateSlidePositions(progress)
 
-    onMove(slidePositions)
+    onMove({ slidePositions, currentlyInAnimationFrame })
   }
 
   function calculateIndexDistance(idx) {
@@ -1071,7 +1057,7 @@ function DragHandling({
   }
 }
 
-function Movement({
+function AnimatedMovement({
   options,
   track,
   speedAndDirectionTracking,
@@ -1092,7 +1078,6 @@ function Movement({
     forceFinish, onMoveComplete = undefined
   }) {
     animation.move({ distance, duration, easing,
-      // These callbacks are executed in an animation frame and should not perform DOM reads
       onMoveComplete: ({ moved }) => {
         onMovement(distance - moved)
         if (onMoveComplete) return onMoveComplete()
@@ -1155,5 +1140,62 @@ function Movement({
   function moveToIdx(idx, { duration = options.duration } = {}) {
     // forceFinish is used to ignore boundaries when rubberband movement is active
     moveTo({ distance: track.calculateIndexDistance(idx), duration, forceFinish: true })
+  }
+}
+
+function SlideManipulation({ options }) {
+  const slides = options.slides || []
+
+  return {
+    setPositions,
+    setWidthsOrHeights,
+    removeStyles,
+  }
+
+  function setPositions(slidePositions) {
+    slides.forEach((slide, idx) => {
+      const { distance } = slidePositions[idx]
+
+      const absoluteDistance = distance * options.widthOrHeight
+      const pos =
+        absoluteDistance -
+        idx *
+          // this bit can be moved to options as soon as I can think of a name:
+          (
+            options.sizePerSlide -
+            options.spacing / options.slidesPerView -
+            (options.spacing / options.slidesPerView) *
+            (options.slidesPerView - 1)
+          )
+
+      const [a, b] = options.isVerticalSlider ? [0, pos] : [pos, 0]
+
+      const transformString = `translate3d(${a}px, ${b}px, 0)`
+      slide.style.transform = transformString
+      slide.style['-webkit-transform'] = transformString
+    })
+  }
+
+  function setWidthsOrHeights() {
+    const prop = options.isVerticalSlider ? 'height' : 'width'
+    slides.forEach(slide => {
+      // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
+      // hmm, it seems this is not really how it currently works. The number of slides, slidesPerView and container size determines this
+      const style = `calc(${100 / options.slidesPerView}% - ${
+        (options.spacing / options.slidesPerView) * (options.slidesPerView - 1)
+      }px)`
+      slide.style[`min-${prop}`] = style
+      slide.style[`max-${prop}`] = style
+    })
+  }
+
+  function removeStyles() {
+    const prop = options.isVerticalSlider ? 'height' : 'width'
+    const styles = ['transform', '-webkit-transform', `min-${prop}`, `max-${prop}`]
+    slides.forEach(slide => {
+      styles.forEach(style => {
+        slide.style.removeProperty(style)
+      })
+    })
   }
 }
