@@ -135,6 +135,9 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     const {
       containerSize, spacing, widthOrHeight, sizePerSlide, origin
     } = getContainerBasedOptions(container, slidesPerView)
+    const {
+      maxPosition, trackLength
+    } = getDerivedOptions(numberOfSlides, slidesPerView, widthOrHeight)
 
     const translatedOptions = {
       enableDragControls:        !!options.controls,
@@ -152,6 +155,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
       touchMultiplicator, slides, numberOfSlides, slidesPerView,
       containerSize, spacing, widthOrHeight, sizePerSlide, origin,
+      maxPosition, trackLength,
     }
     return translatedOptions
 
@@ -172,6 +176,12 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       }
     }
 
+    /*
+      We could have the functions below without arguments, this however would be very fragile
+      because it would hide the fact that they depend on each other. Giving them arguments
+      ensures the correct order.
+    */
+
     function getSlidesPerView(numberOfSlides) {
       const option = options.slidesPerView
       return typeof option === 'function'
@@ -189,6 +199,18 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
         : 0
 
       return { containerSize, spacing, widthOrHeight, sizePerSlide, origin }
+    }
+
+    function getDerivedOptions(numberOfSlides, slidesPerView, widthOrHeight) {
+      return {
+        // what is the difference between maxPosition and trackLength? They should be related
+        maxPosition: (widthOrHeight * numberOfSlides) / slidesPerView,
+        trackLength: (
+          widthOrHeight * (
+            numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.centered ? 1 : slidesPerView)
+          )
+        ) / slidesPerView,
+      }
     }
   }
 
@@ -351,7 +373,6 @@ function KeenSlider(container, initialOptions, fireEvent) {
   }
 
   function sliderResize() {
-    options.updateDynamicOptions()
     if (options.slides) writeToDOM.fromNonAnimationFrame(slideManipulation.setWidthsOrHeights)
 
     fireEvent('beforeChange')
@@ -406,16 +427,7 @@ function Options(options, { container }) {
   // these constructs will probably be removed, but they make some side effects more obvious in this stage
   // note to self: check if you can refactor them to the outside of this component, so that the option functions
   // are used in the appropriate times to create new instance
-  let trackLength   = null
-  let maxPosition   = null
-
-  updateDynamicOptions()
-
   const dynamicOptions = {
-    updateDynamicOptions,
-    get trackLength()    { return trackLength },
-    get maxPosition()    { return maxPosition },
-
     isIndexOutOfBounds(idx) {
       return !options.isLoop && (idx < 0 || idx > options.numberOfSlides - 1)
     },
@@ -425,21 +437,6 @@ function Options(options, { container }) {
   }
 
   return { ...options, ...dynamicOptions }
-
-  function updateDynamicOptions() {
-    // this is not really handy because the order of calls matters
-    updateDerivedOptions()
-  }
-
-  function updateDerivedOptions() {
-    // what is the difference between maxPosition and trackLength? They should be related
-    maxPosition = (options.widthOrHeight * options.numberOfSlides) / options.slidesPerView
-    trackLength = (
-      options.widthOrHeight * (
-        options.numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.isCentered ? 1 : options.slidesPerView)
-      )
-    ) / options.slidesPerView
-  }
 }
 
 function SlideManipulation({ options }) {

@@ -23,12 +23,11 @@ export type TranslatedOptionsType = {
   spacing: number,
   origin: number,
   sizePerSlide: number,
+  trackLength: number,
+  maxPosition: number,
 }
 
 export type DynamicOptionsType = {
-  updateDynamicOptions(): void,
-  trackLength: number,
-  maxPosition: number,
   isIndexOutOfBounds(idx: number): boolean,
   ensureIndexInBounds(idx: number): number,
 }
