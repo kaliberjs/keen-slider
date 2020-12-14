@@ -139,7 +139,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     const { slides, numberOfSlides } = getSlidesAndNumberOfSlides()
     const slidesPerView              = getSlidesPerView(numberOfSlides)
     const {
-      containerSize, spacing, widthOrHeight, sizePerSlide, origin
+      containerSize, spacingPerSlide, visibleSpacing, widthOrHeight, sizePerSlide, origin
     } = getContainerBasedOptions(container, slidesPerView)
     const {
       maxPosition, trackLength
@@ -164,7 +164,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       dragEndMove:               options.mode,
 
       touchMultiplicator, slides, numberOfSlides, slidesPerView,
-      containerSize, spacing, widthOrHeight, sizePerSlide, origin,
+      containerSize, spacingPerSlide, visibleSpacing, widthOrHeight, sizePerSlide, origin,
       maxPosition, trackLength,
 
       isIndexOutOfBounds(idx) {
@@ -172,6 +172,10 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       },
       ensureIndexInBounds(idx) {
         return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
+      },
+
+      calculateIndexPosition(idx) {
+        return sizePerSlide * clampIndex(idx)
       },
     }
     return translatedOptions
@@ -207,27 +211,40 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     }
 
     function getContainerBasedOptions(container, slidesPerView) {
-      const containerSize = options.vertical ? container.offsetHeight : container.offsetWidth
-      const spacing       = clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
-      const widthOrHeight = containerSize + spacing
-      const sizePerSlide  = widthOrHeight / slidesPerView
-      const origin        = options.centered
+      const containerSize   = options.vertical ? container.offsetHeight : container.offsetWidth
+      const spacing         = clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
+      const widthOrHeight   = containerSize + spacing
+      // only used for positioning and sizing
+      const spacingPerSlide = spacing / slidesPerView
+      const visibleSpacing  = spacingPerSlide * (slidesPerView - 1)
+      const sizePerSlide    = widthOrHeight / slidesPerView
+      // only used to calculate slide positions
+      const origin          = options.centered
         ? (widthOrHeight / 2 - sizePerSlide / 2) / widthOrHeight
         : 0
 
-      return { containerSize, spacing, widthOrHeight, sizePerSlide, origin }
+      return { containerSize, spacingPerSlide, visibleSpacing, widthOrHeight, sizePerSlide, origin }
     }
 
     function getDerivedOptions(numberOfSlides, slidesPerView, widthOrHeight) {
+      // what is the difference between maxPosition and trackLength? They should be related
       return {
-        // what is the difference between maxPosition and trackLength? They should be related
+        // only used to determine the track progress, which is only used for slide positioning
         maxPosition: (widthOrHeight * numberOfSlides) / slidesPerView,
+
+        // only used to determine the 'out of bounds offset'
         trackLength: (
           widthOrHeight * (
             numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.centered ? 1 : slidesPerView)
           )
         ) / slidesPerView,
       }
+    }
+
+    function clampIndex(idx) {
+      return options.loop
+        ? idx
+        : clampValue(idx, 0, numberOfSlides - 1 - (options.centered ? 0 : slidesPerView - 1))
     }
   }
 
@@ -440,12 +457,7 @@ function SlideManipulation({ options }) {
         absoluteDistance -
         idx *
           // this bit can be moved to options as soon as I can think of a name:
-          (
-            options.sizePerSlide -
-            options.spacing / options.slidesPerView -
-            (options.spacing / options.slidesPerView) *
-            (options.slidesPerView - 1)
-          )
+          (options.sizePerSlide - options.spacingPerSlide - options.visibleSpacing)
 
       const [a, b] = options.isVerticalSlider ? [0, pos] : [pos, 0]
 
@@ -460,9 +472,7 @@ function SlideManipulation({ options }) {
     slides.forEach(slide => {
       // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
       // hmm, it seems this is not really how it currently works. The number of slides, slidesPerView and container size determines this
-      const style = `calc(${100 / options.slidesPerView}% - ${
-        (options.spacing / options.slidesPerView) * (options.slidesPerView - 1)
-      }px)`
+      const style = `calc(${100 / options.slidesPerView}% - ${options.visibleSpacing}px)`
       slide.style[`min-${prop}`] = style
       slide.style[`max-${prop}`] = style
     })
@@ -497,7 +507,8 @@ function Track({ options, onIndexChanged, onMove }) {
     sizePerSlide,
     widthOrHeight, slidesPerView,
     trackLength, maxPosition,
-    isIndexOutOfBounds, numberOfSlides
+    isIndexOutOfBounds, numberOfSlides,
+    calculateIndexPosition,
   } = options
   const speedAndDirectionTracking = SpeedAndDirectionTracking()
   let currentIdx = initialIndex
@@ -534,14 +545,6 @@ function Track({ options, onIndexChanged, onMove }) {
     slidePositions = calculateSlidePositions(progress)
     onMove({ slidePositions, currentlyInAnimationFrame })
   }
-  function calculateIndexDistance(idx) {
-    return -(-(sizePerSlide * clampIndex(idx)) + position)
-  }
-  function clampIndex(idx) {
-    return isLoop
-      ? idx
-      : clampValue(idx, 0, numberOfSlides - 1 - (isCentered ? 0 : slidesPerView - 1))
-  }
   function adjustDragMovement(delta) {
     const offset = calculateOutOfBoundsOffset(delta)
     return (
@@ -562,6 +565,9 @@ function Track({ options, onIndexChanged, onMove }) {
       0
     )
   }
+  function calculateIndexDistance(idx) {
+    return -(-calculateIndexPosition(idx) + position)
+  }
   function calculateTrackProgress(position) {
     return isLoop
       ? (position % maxPosition) / maxPosition
@@ -570,6 +576,14 @@ function Track({ options, onIndexChanged, onMove }) {
   function calculateIndex(position) {
     return Math.round(position / sizePerSlide)
   }
+  // hmmm, this has to move out. It's greatly tied to the way slides are represented.
+  // This library provides great freedom in how slides are represented, the different types of
+  // slides require different approaches:
+  // - number of slides requires people to use the 'details' to position stuff themselves
+  // - slides from html elements uses this method. And here we could imagine a different approach
+  //   using slides that have different sizes for example. Instead of giving them a size we could
+  //   read their size
+  // Anyway, it would be helpful if these 'strategies' could be plugged in
   function calculateSlidePositions(progress) {
     // todo - option for not calculating slides that are not in sight
     const slidePositions = []
