@@ -131,6 +131,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
   function translateOptions({ dragSpeed, ...options }, container) {
     const touchMultiplicator = getTouchMultiplicator()
     const { slides, numberOfSlides } = getSlidesAndNumberOfSlides()
+    const slidesPerView = getSlidesPerView(numberOfSlides)
 
     const translatedOptions = {
       ...options,
@@ -148,11 +149,18 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       friction:                  options.friction,
       dragEndMove:               options.mode,
       spacing:                   options.spacing,
-      slidesPerView:             options.slidesPerView,
 
-      touchMultiplicator, slides, numberOfSlides,
+      touchMultiplicator, slides, numberOfSlides, slidesPerView
     }
     return translatedOptions
+
+    function getTouchMultiplicator() {
+      const dragSpeedMultiplicator = typeof dragSpeed === 'function'
+        ? val => dragSpeed(val, publicApi)
+        : val => val * dragSpeed
+
+      return val => dragSpeedMultiplicator(val) * (!options.rtl ? 1 : -1)
+    }
 
     function getSlidesAndNumberOfSlides() { // side effects should be removed in a later stage
       if (typeof options.slides === 'number')
@@ -163,12 +171,11 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       }
     }
 
-    function getTouchMultiplicator() {
-      const dragSpeedMultiplicator = typeof dragSpeed === 'function'
-        ? val => dragSpeed(val, publicApi)
-        : val => val * dragSpeed
-
-      return val => dragSpeedMultiplicator(val) * (!options.rtl ? 1 : -1)
+    function getSlidesPerView(numberOfSlides) {
+      const option = options.slidesPerView
+      return typeof option === 'function'
+        ? option()
+        : clampValue(option, 1, Math.max(options.loop ? numberOfSlides - 1 : numberOfSlides, 1))
     }
   }
 
@@ -386,7 +393,6 @@ function Options(options, { container }) {
   // these constructs will probably be removed, but they make some side effects more obvious in this stage
   // note to self: check if you can refactor them to the outside of this component, so that the option functions
   // are used in the appropriate times to create new instance
-  let slidesPerView = null
   let containerSize = null
   let spacing       = null
   let widthOrHeight = null
@@ -399,7 +405,6 @@ function Options(options, { container }) {
 
   const dynamicOptions = {
     updateDynamicOptions,
-    get slidesPerView()  { return slidesPerView },
     get widthOrHeight()  { return widthOrHeight },
     get spacing()        { return spacing },
     get origin()         { return origin },
@@ -419,36 +424,28 @@ function Options(options, { container }) {
 
   function updateDynamicOptions() {
     // this is not really handy because the order of calls matters
-    updateSlidesPerView()
     updateContainerBasedProperties()
     updateDerivedOptions()
   }
 
   function updateContainerBasedProperties() {
     containerSize = options.isVerticalSlider ? container.offsetHeight : container.offsetWidth
-    spacing       = clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
+    spacing       = clampValue(options.spacing, 0, containerSize / (options.slidesPerView - 1) - 1)
     widthOrHeight = containerSize + spacing
-    sizePerSlide  = widthOrHeight / slidesPerView
+    sizePerSlide  = widthOrHeight / options.slidesPerView
     origin        = options.isCentered
       ? (widthOrHeight / 2 - sizePerSlide / 2) / widthOrHeight
       : 0
   }
 
-  function updateSlidesPerView() {
-    const option = options.slidesPerView
-    slidesPerView = typeof option === 'function'
-      ? option()
-      : clampValue(option, 1, Math.max(options.isLoop ? options.numberOfSlides - 1 : options.numberOfSlides, 1))
-  }
-
   function updateDerivedOptions() {
     // what is the difference between maxPosition and trackLength? They should be related
-    maxPosition = (widthOrHeight * options.numberOfSlides) / slidesPerView
+    maxPosition = (widthOrHeight * options.numberOfSlides) / options.slidesPerView
     trackLength = (
       widthOrHeight * (
-        options.numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.isCentered ? 1 : slidesPerView)
+        options.numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.isCentered ? 1 : options.slidesPerView)
       )
-    ) / slidesPerView
+    ) / options.slidesPerView
   }
 }
 

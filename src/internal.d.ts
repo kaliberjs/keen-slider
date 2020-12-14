@@ -17,13 +17,12 @@ export type TranslatedOptionsType = {
   spacing: TOptions['spacing'],
   slides: Array<HTMLElement> | null,
   numberOfSlides: number,
-  slidesPerView: TOptions['slidesPerView'],
+  slidesPerView: number,
 }
 
 export type DynamicOptionsType = {
   updateDynamicOptions(): void,
   trackLength: number,
-  slidesPerView: number,
   spacing: number,
   widthOrHeight: number,
   spacing: number,
