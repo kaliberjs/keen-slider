@@ -115,8 +115,8 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
   }
 
   function sliderCreate(options) {
-    const translatedOptions = translateOptions(options)
     const [container] = getElements(initialContainer, document)
+    const translatedOptions = translateOptions(options, container)
     slider.current = KeenSlider(container, translatedOptions, fireEvent)
     slider.current.mount()
   }
@@ -128,14 +128,13 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
   /** @param {TOptions} options
    *  @returns {TranslatedOptionsType} */
-  function translateOptions({ dragSpeed, ...options }) {
-    const dragSpeedMultiplicator = typeof dragSpeed === 'function'
-      ? val => dragSpeed(val, publicApi)
-      : val => val * dragSpeed
+  function translateOptions({ dragSpeed, ...options }, container) {
+    const touchMultiplicator = getTouchMultiplicator()
+    const { slides, numberOfSlides } = getSlidesAndNumberOfSlides()
 
     const translatedOptions = {
       ...options,
-      touchMultiplicator:        val => dragSpeedMultiplicator(val) * (!options.rtl ? 1 : -1),
+
       enableDragControls:        !!options.controls,
       isLoop:                    !!options.loop,
       isRubberband:              !options.loop && options.rubberband,
@@ -149,10 +148,28 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       friction:                  options.friction,
       dragEndMove:               options.mode,
       spacing:                   options.spacing,
-      slides:                    options.slides,
       slidesPerView:             options.slidesPerView,
+
+      touchMultiplicator, slides, numberOfSlides,
     }
     return translatedOptions
+
+    function getSlidesAndNumberOfSlides() { // side effects should be removed in a later stage
+      if (typeof options.slides === 'number')
+        return { slides: null, numberOfSlides: options.slides }
+      else {
+        const slides = getElements(options.slides, container)
+        return { slides, numberOfSlides: slides ? slides.length : 0 }
+      }
+    }
+
+    function getTouchMultiplicator() {
+      const dragSpeedMultiplicator = typeof dragSpeed === 'function'
+        ? val => dragSpeed(val, publicApi)
+        : val => val * dragSpeed
+
+      return val => dragSpeedMultiplicator(val) * (!options.rtl ? 1 : -1)
+    }
   }
 
   /** @param {keyof TEvents} event */
@@ -369,7 +386,6 @@ function Options(options, { container }) {
   // these constructs will probably be removed, but they make some side effects more obvious in this stage
   // note to self: check if you can refactor them to the outside of this component, so that the option functions
   // are used in the appropriate times to create new instance
-  let slides, numberOfSlides = null
   let slidesPerView = null
   let containerSize = null
   let spacing       = null
@@ -383,8 +399,6 @@ function Options(options, { container }) {
 
   const dynamicOptions = {
     updateDynamicOptions,
-    get slides()         { return slides },
-    get numberOfSlides() { return numberOfSlides },
     get slidesPerView()  { return slidesPerView },
     get widthOrHeight()  { return widthOrHeight },
     get spacing()        { return spacing },
@@ -394,10 +408,10 @@ function Options(options, { container }) {
     get maxPosition()    { return maxPosition },
 
     isIndexOutOfBounds(idx) {
-      return !options.isLoop && (idx < 0 || idx > numberOfSlides - 1)
+      return !options.isLoop && (idx < 0 || idx > options.numberOfSlides - 1)
     },
     ensureIndexInBounds(idx) {
-      return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
+      return ((idx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides
     },
   }
 
@@ -405,7 +419,6 @@ function Options(options, { container }) {
 
   function updateDynamicOptions() {
     // this is not really handy because the order of calls matters
-    updateSlidesAndNumberOfSlides()
     updateSlidesPerView()
     updateContainerBasedProperties()
     updateDerivedOptions()
@@ -421,29 +434,19 @@ function Options(options, { container }) {
       : 0
   }
 
-  function updateSlidesAndNumberOfSlides() { // side effects should be removed in a later stage
-    if (typeof options.slides === 'number') {
-      slides         = null
-      numberOfSlides = options.slides
-    } else {
-      slides         = getElements(options.slides, container)
-      numberOfSlides = slides ? slides.length : 0
-    }
-  }
-
   function updateSlidesPerView() {
     const option = options.slidesPerView
     slidesPerView = typeof option === 'function'
       ? option()
-      : clampValue(option, 1, Math.max(options.isLoop ? numberOfSlides - 1 : numberOfSlides, 1))
+      : clampValue(option, 1, Math.max(options.isLoop ? options.numberOfSlides - 1 : options.numberOfSlides, 1))
   }
 
   function updateDerivedOptions() {
     // what is the difference between maxPosition and trackLength? They should be related
-    maxPosition = (widthOrHeight * numberOfSlides) / slidesPerView
+    maxPosition = (widthOrHeight * options.numberOfSlides) / slidesPerView
     trackLength = (
       widthOrHeight * (
-        numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.isCentered ? 1 : slidesPerView)
+        options.numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.isCentered ? 1 : slidesPerView)
       )
     ) / slidesPerView
   }

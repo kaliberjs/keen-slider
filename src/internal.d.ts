@@ -15,15 +15,14 @@ export type TranslatedOptionsType = {
   friction: number,
   dragEndMove: 'snap' | 'free-snap' | 'free',
   spacing: TOptions['spacing'],
-  slides: TOptions['slides'],
+  slides: Array<HTMLElement> | null,
+  numberOfSlides: number,
   slidesPerView: TOptions['slidesPerView'],
 }
 
 export type DynamicOptionsType = {
   updateDynamicOptions(): void,
   trackLength: number,
-  slides: Array<HTMLElement> | null,
-  numberOfSlides: number,
   slidesPerView: number,
   spacing: number,
   widthOrHeight: number,
