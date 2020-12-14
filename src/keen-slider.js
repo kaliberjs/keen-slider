@@ -1,6 +1,6 @@
 import './polyfills'
 import KeenSliderType, { TOptionsEvents, TOptions, TEvents, TContainer } from '../index'
-import { TranslatedOptionsType, DynamicOptionsType } from './internal'
+import { TranslatedOptionsType } from './internal'
 
 /** @type {TOptions} */
 const defaultOptions = {
@@ -139,6 +139,10 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       maxPosition, trackLength
     } = getDerivedOptions(numberOfSlides, slidesPerView, widthOrHeight)
 
+    // Note to self, determine how these options are used.
+    // It's a bit vague, but it might be possible to add the concept of 'behavior' and have
+    // different options result in different behaviors. An example would be having settings
+    // based on num slides and container size vs measured slide size and container size
     const translatedOptions = {
       enableDragControls:        !!options.controls,
       isLoop:                    !!options.loop,
@@ -156,6 +160,13 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       touchMultiplicator, slides, numberOfSlides, slidesPerView,
       containerSize, spacing, widthOrHeight, sizePerSlide, origin,
       maxPosition, trackLength,
+
+      isIndexOutOfBounds(idx) {
+        return !options.loop && (idx < 0 || idx > numberOfSlides - 1)
+      },
+      ensureIndexInBounds(idx) {
+        return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
+      },
     }
     return translatedOptions
 
@@ -242,27 +253,12 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
 /**
  * @param {HTMLElement} container
- * @param {TranslatedOptionsType} initialOptions
+ * @param {TranslatedOptionsType} options
  * @param {(event: keyof TEvents) => void} fireEvent
  */
-function KeenSlider(container, initialOptions, fireEvent) {
+function KeenSlider(container, options, fireEvent) {
   /*
     Thinking out loud (talking to myself)
-
-    - split the slider into a few more sections, class, components (whatever you want to call them)
-      - something to handle user movement
-      - something to handle movement after a user lets go
-      - something to handle manual (public API) movement
-      - something to handle tracking (getDetails)
-      - something to handle positioning, maybe split virtual (without slides) and concrete
-        (with slides)
-    - move calculations out of options, the options object only expose getters, so the maximum
-      complexity will be getter functions. If these getters require calculations it should depend
-      on another object. Note to self: don't introduce cyclic dependencies
-
-    Important note to self: keep functionality that belongs together (will change at the same rate
-    and for the same reasons) close together. Once you think you are done, re-read this line and
-    evaluate.
 
     Once the code is clean think about your ideal design:
     - no function options (unless they are callbacks or hooks)
@@ -277,7 +273,6 @@ function KeenSlider(container, initialOptions, fireEvent) {
     if we lose 'normal use' backwards compatibility.
   */
 
-  const options = Options(initialOptions, { container })
   const slideManipulation = SlideManipulation({ options })
   const { readOnly: track, ...trackManipulation } = Track({
     options,
@@ -415,30 +410,6 @@ function getElements(element, wrapper) {
   )
 }
 
-/** @param {TranslatedOptionsType} options
- *  @param {{ container: any }} x
- *  @returns {TranslatedOptionsType & DynamicOptionsType} */
-function Options(options, { container }) {
-  // TODO: the functions in options make stuff complicated. We should probably remove them if they
-  // influence behavior an example is the fact that options.slides can be a function. It would be
-  // better to destroy and recreate the slider, at the moment of writing this comment, determining
-  // the slides is done during resize
-
-  // these constructs will probably be removed, but they make some side effects more obvious in this stage
-  // note to self: check if you can refactor them to the outside of this component, so that the option functions
-  // are used in the appropriate times to create new instance
-  const dynamicOptions = {
-    isIndexOutOfBounds(idx) {
-      return !options.isLoop && (idx < 0 || idx > options.numberOfSlides - 1)
-    },
-    ensureIndexInBounds(idx) {
-      return ((idx % options.numberOfSlides) + options.numberOfSlides) % options.numberOfSlides
-    },
-  }
-
-  return { ...options, ...dynamicOptions }
-}
-
 function SlideManipulation({ options }) {
   const slides = options.slides || []
 
@@ -498,7 +469,7 @@ function SlideManipulation({ options }) {
 
 /**
  * @param {{
- *  options: TranslatedOptionsType & DynamicOptionsType,
+ *  options: TranslatedOptionsType,
  *  onIndexChanged(newIndex: number): void,
  *  onMove(_: {
  *    slidePositions: Array<{ portion: number, distance: number }>,
@@ -725,7 +696,7 @@ function AnimatedMovement({ options, track, onMovementComplete, onMovement }) {
 /**
  * @param {{
  *   container: any,
- *   options: TranslatedOptionsType & DynamicOptionsType,
+ *   options: TranslatedOptionsType,
  *   track: ReturnType<Track>['readOnly'],
  *   onDragStart(_: { timeStamp: number }): void,
  *   onFirstDrag(_: { timeStamp: number }): void,

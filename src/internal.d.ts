@@ -25,9 +25,6 @@ export type TranslatedOptionsType = {
   sizePerSlide: number,
   trackLength: number,
   maxPosition: number,
-}
-
-export type DynamicOptionsType = {
   isIndexOutOfBounds(idx: number): boolean,
   ensureIndexInBounds(idx: number): number,
 }
