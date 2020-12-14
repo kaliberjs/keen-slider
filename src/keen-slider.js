@@ -74,13 +74,9 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     resize() {
       sliderResize(true)
     },
-    controls: active => { // not sure if this is a valuable API, seems to break on breakpoint change
-      const newOptions = {
-        ...breakpointBasedOptions.options,
-        initial: slider.current.details().absoluteSlide,
-        controls: active,
-      }
-      sliderReplace(newOptions)
+    controls: active => { // not sure if this is a valuable API
+      breakpointBasedOptions = breakpointBasedOptions.update({ controls: active })
+      sliderReplaceKeepIndex(breakpointBasedOptions.options)
     },
     refresh(options) { // this function should probably removed, it is simpler to just destroy and create a new instance
       breakpointBasedOptions = BreakpointBasedOptions(options || initialOptions)
@@ -121,9 +117,19 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     slider.current.mount()
   }
 
+  // this breaks some of the backwards compatibility because it triggers a lot more mounts and unmounts
+  // than in the previous version
   function sliderReplace(options) {
     slider.current.destroy()
     sliderCreate(options)
+  }
+
+  function sliderReplaceKeepIndex(options) {
+    const newOptions = {
+      ...options,
+      initial: slider.current.details().absoluteSlide
+    }
+    sliderReplace(newOptions)
   }
 
   /** @param {TOptions} options
@@ -237,15 +243,21 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
      // of this function and the resize function can live inside the slider
     if (breakpointBasedOptions.refresh().optionsChanged) {
       const { options } = breakpointBasedOptions
-      const newOptions = options.resetSlide
-        ? options
-        : { ...options, initial: slider.current.details().absoluteSlide }
-
-      sliderReplace(newOptions)
+      if (options.resetSlide) sliderReplace(options)
+      else sliderReplaceKeepIndex(options)
     } else {
       const windowWidth = window.innerWidth
       if (!force && windowWidth === resizeLastWidth) return
       resizeLastWidth = windowWidth
+
+      // It feels a bit weird to do this, while it is similar to the original behavior, we should
+      // probably (in the final version) make this controllable. The question is: when will those
+      // dynamic options need to be refreshed?
+      //
+      // In some cases the options don't change and in other cases there aren't any dynamic options
+      //
+      // Anyway, we'll revisit this later
+      sliderReplaceKeepIndex(breakpointBasedOptions.options)
       slider.current.resize()
     }
   }
@@ -812,6 +824,9 @@ function BreakpointBasedOptions(initialOptions) {
       const previousOptions = options;
       options = determineOptions(initialOptions, options)
       return { optionsChanged: previousOptions !== options }
+    },
+    update(newOptions) {
+      return BreakpointBasedOptions({ ...initialOptions, ...newOptions })
     }
   }
 
