@@ -18,16 +18,16 @@ export type TranslatedOptionsType = {
   slides: Array<HTMLElement> | null,
   numberOfSlides: number,
   slidesPerView: number,
-}
-
-export type DynamicOptionsType = {
-  updateDynamicOptions(): void,
-  trackLength: number,
   spacing: number,
   widthOrHeight: number,
   spacing: number,
   origin: number,
   sizePerSlide: number,
+}
+
+export type DynamicOptionsType = {
+  updateDynamicOptions(): void,
+  trackLength: number,
   maxPosition: number,
   isIndexOutOfBounds(idx: number): boolean,
   ensureIndexInBounds(idx: number): number,
