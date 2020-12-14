@@ -116,7 +116,8 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
   function sliderCreate(options) {
     const translatedOptions = translateOptions(options)
-    slider.current = KeenSlider(initialContainer, translatedOptions, fireEvent)
+    const [container] = getElements(initialContainer, document)
+    slider.current = KeenSlider(container, translatedOptions, fireEvent)
     slider.current.mount()
   }
 
@@ -181,11 +182,11 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 }
 
 /**
- * @param {TContainer} initialContainer
+ * @param {HTMLElement} container
  * @param {TranslatedOptionsType} initialOptions
  * @param {(event: keyof TEvents) => void} fireEvent
  */
-function KeenSlider(initialContainer, initialOptions, fireEvent) {
+function KeenSlider(container, initialOptions, fireEvent) {
   /*
     Thinking out loud (talking to myself)
 
@@ -217,7 +218,6 @@ function KeenSlider(initialContainer, initialOptions, fireEvent) {
     if we lose 'normal use' backwards compatibility.
   */
 
-  const [container] = getElements(initialContainer, document)
   const options = Options(initialOptions, { container })
   const slideManipulation = SlideManipulation({ options })
   const { readOnly: track, ...trackManipulation } = Track({
