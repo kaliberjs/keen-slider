@@ -26,7 +26,7 @@ export type TDetails = {
   relativeSlide: number
   absoluteSlide: number
   size: number
-  slidesPerView: number
+  slidesPerView: number // this only makes sense if slides are of equal size
   widthOrHeight: number
 }
 

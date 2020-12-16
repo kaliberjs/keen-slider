@@ -1,6 +1,6 @@
 import './polyfills'
 import KeenSliderType, { TOptionsEvents, TOptions, TEvents, TContainer } from '../index'
-import { TranslatedOptionsType } from './internal'
+import { TranslatedOptionsType, StrategyType, BaseOptionType } from './internal'
 
 /** @type {TOptions} */
 const defaultOptions = {
@@ -139,43 +139,44 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     const { slides, numberOfSlides } = getSlidesAndNumberOfSlides()
     const slidesPerView              = getSlidesPerView(numberOfSlides)
     const {
-      containerSize, spacingPerSlide, visibleSpacing, widthOrHeight, sizePerSlide, origin
+      containerSize, widthOrHeight,
     } = getContainerBasedOptions(container, slidesPerView)
-    const {
-      maxPosition, trackLength
-    } = getDerivedOptions(numberOfSlides, slidesPerView, widthOrHeight)
 
     // Note to self, determine how these options are used.
     // It's a bit vague, but it might be possible to add the concept of 'behavior' and have
     // different options result in different behaviors. An example would be having settings
     // based on num slides and container size vs measured slide size and container size
-    const translatedOptions = {
-      enableDragControls:        !!options.controls,
+    const baseOptions = {
       isLoop:                    !!options.loop,
       isRubberband:              !options.loop && options.rubberband,
       isVerticalSlider:          !!options.vertical,
       isRtl:                     options.rtl,
       isCentered:                options.centered,
+    }
+    const strategy = StrategyX(baseOptions, {
+      spacing: options.spacing,
+      numberOfSlides,
+      slidesPerView,
+      widthOrHeight,
+    })
+    const translatedOptions = {
+      ...baseOptions,
       initialIndex:              options.initial,
+      enableDragControls:        !!options.controls,
       cancelOnLeave:             options.cancelOnLeave,
       preventEventAttributeName: options.preventEvent,
       duration:                  options.duration,
       friction:                  options.friction,
       dragEndMove:               options.mode,
 
-      touchMultiplicator, slides, numberOfSlides, slidesPerView,
-      containerSize, spacingPerSlide, visibleSpacing, widthOrHeight, sizePerSlide, origin,
-      maxPosition, trackLength,
+      touchMultiplicator, slides, numberOfSlides, containerSize,
+      widthOrHeight, strategy,
 
       isIndexOutOfBounds(idx) {
         return !options.loop && (idx < 0 || idx > numberOfSlides - 1)
       },
       ensureIndexInBounds(idx) {
         return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
-      },
-
-      calculateIndexPosition(idx) {
-        return sizePerSlide * clampIndex(idx)
       },
     }
     return translatedOptions
@@ -214,37 +215,8 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       const containerSize   = options.vertical ? container.offsetHeight : container.offsetWidth
       const spacing         = clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
       const widthOrHeight   = containerSize + spacing
-      // only used for positioning and sizing
-      const spacingPerSlide = spacing / slidesPerView
-      const visibleSpacing  = spacingPerSlide * (slidesPerView - 1)
-      const sizePerSlide    = widthOrHeight / slidesPerView
-      // only used to calculate slide positions
-      const origin          = options.centered
-        ? (widthOrHeight / 2 - sizePerSlide / 2) / widthOrHeight
-        : 0
 
-      return { containerSize, spacingPerSlide, visibleSpacing, widthOrHeight, sizePerSlide, origin }
-    }
-
-    function getDerivedOptions(numberOfSlides, slidesPerView, widthOrHeight) {
-      // what is the difference between maxPosition and trackLength? They should be related
-      return {
-        // only used to determine the track progress, which is only used for slide positioning
-        maxPosition: (widthOrHeight * numberOfSlides) / slidesPerView,
-
-        // only used to determine the 'out of bounds offset'
-        trackLength: (
-          widthOrHeight * (
-            numberOfSlides - 1 /* <- check if we need parentheses here */ * (options.centered ? 1 : slidesPerView)
-          )
-        ) / slidesPerView,
-      }
-    }
-
-    function clampIndex(idx) {
-      return options.loop
-        ? idx
-        : clampValue(idx, 0, numberOfSlides - 1 - (options.centered ? 0 : slidesPerView - 1))
+      return { containerSize, widthOrHeight }
     }
   }
 
@@ -277,6 +249,115 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       sliderReplaceKeepIndex(breakpointBasedOptions.options)
       slider.current.resize()
     }
+  }
+}
+
+/** @param {BaseOptionType} options
+ *  @returns {StrategyType} */
+function StrategyX(options, { spacing, slidesPerView, widthOrHeight, numberOfSlides }) {
+  const {
+    isLoop, isRtl, isCentered,
+  } = options
+
+  // only used for positioning and sizing
+  const spacingPerSlide = spacing / slidesPerView
+  const visibleSpacing  = spacingPerSlide * (slidesPerView - 1)
+  const sizePerSlide    = widthOrHeight / slidesPerView
+  // only used to calculate slide positions
+  const origin          = isCentered
+    ? (widthOrHeight / 2 - sizePerSlide / 2) / widthOrHeight
+    : 0
+  // what is the difference between maxPosition and trackLength? They should be related
+  const maxPosition     = (widthOrHeight * numberOfSlides) / slidesPerView
+  const trackLength     = (
+    widthOrHeight * (
+      numberOfSlides - 1 /* <- check if we need parentheses here */ * (isCentered ? 1 : slidesPerView)
+    )
+  ) / slidesPerView
+
+  return {
+    maxPosition,
+    trackLength,
+    calculateIndexPosition,
+    calculateSlidePositions,
+    calculateIndex,
+    calculateIndexTrend,
+    getDetails,
+    getSizeStyle,
+    getSlidePosition,
+  }
+
+  // hmmm, this has to move out. It's greatly tied to the way slides are represented.
+  // This library provides great freedom in how slides are represented, the different types of
+  // slides require different approaches:
+  // - number of slides requires people to use the 'details' to position stuff themselves
+  // - slides from html elements uses this method. And here we could imagine a different approach
+  //   using slides that have different sizes for example. Instead of giving them a size we could
+  //   read their size
+  // Anyway, it would be helpful if these 'strategies' could be plugged in
+  function calculateSlidePositions(progress) {
+    // todo - option for not calculating slides that are not in sight
+    const slidePositions = []
+    const normalizedrogress = progress < 0 && isLoop ? progress + 1 : progress
+    for (let idx = 0; idx < numberOfSlides; idx++) {
+      let distance =
+        (((1 / numberOfSlides) * idx - normalizedrogress) * numberOfSlides) /
+          slidesPerView +
+          origin
+      if (isLoop)
+        distance +=
+          distance > (numberOfSlides - 1) / slidesPerView  ? -(numberOfSlides / slidesPerView) :
+          distance < -(numberOfSlides / slidesPerView) + 1 ? numberOfSlides / slidesPerView :
+          0
+      const slideFactor = 1 / slidesPerView
+      const left = distance + slideFactor
+      const portion = (
+        left < slideFactor ? left / slideFactor :
+        left > 1           ? 1 - ((left - 1) * slidesPerView) / 1 :
+        1
+      )
+      slidePositions.push({
+        portion: portion < 0 || portion > 1 ? 0 : portion,
+        distance: !isRtl ? distance : distance * -1 + 1 - slideFactor
+      })
+    }
+    return slidePositions
+  }
+
+  function getDetails() {
+    return {
+      slidesPerView,
+    }
+  }
+
+  function calculateIndexTrend(position) {
+    return position / sizePerSlide
+  }
+
+  function calculateIndex(position) {
+    return Math.round(calculateIndexTrend(position))
+  }
+
+  function getSizeStyle() {
+    return `calc(${100 / slidesPerView}% - ${visibleSpacing}px)`
+  }
+
+  function getSlidePosition(idx, { distance }) {
+      const absoluteDistance = distance * widthOrHeight
+      const pos =
+        absoluteDistance -
+        idx *
+          (sizePerSlide - spacingPerSlide - visibleSpacing)
+  }
+
+  function calculateIndexPosition(idx) {
+    return sizePerSlide * clampIndex(idx)
+  }
+
+  function clampIndex(idx) {
+    return isLoop
+      ? idx
+      : clampValue(idx, 0, numberOfSlides - 1 - (isCentered ? 0 : slidesPerView - 1))
   }
 }
 
@@ -366,8 +447,7 @@ function KeenSlider(container, options, fireEvent) {
       animatedMovement.moveToIdx(idx, { duration })
     },
     moveToSlideRelative(relativeIdx, nearest = false, duration = options.duration) {
-      const idx = getRelativeIdx(relativeIdx, nearest)
-      animatedMovement.moveToIdx(idx, { duration })
+      animatedMovement.moveToIdx(track.getRelativeIdx(relativeIdx, nearest), { duration })
     },
 
     details() { return track.details },
@@ -408,24 +488,6 @@ function KeenSlider(container, options, fireEvent) {
     trackManipulation.measureSpeedAndDirection(delta, timeStamp)
     trackManipulation.move(delta, { isDrag, currentlyInAnimationFrame })
   }
-
-  // The logic in this function does not seem quite right, it seems to wrongly decide between
-  // left and right by comparing (the normalized) idx to the current position
-  function getRelativeIdx(idx, nearest) {
-    const relativeIdx = options.ensureIndexInBounds(idx) // here we lose the direction
-    const current = options.ensureIndexInBounds(track.currentIdx)
-    const left = current < relativeIdx
-      ? -current - options.numberOfSlides + relativeIdx
-      : -(current - relativeIdx)
-    const right = current > relativeIdx
-      ? options.numberOfSlides - current + relativeIdx
-      : relativeIdx - current
-    const add = (
-      nearest ? (Math.abs(left) <= right ? left : right) :
-      relativeIdx < current ? left : right // here we decide left or right based on the abs value of the relative index
-    )
-    return track.currentIdx + add
-  }
 }
 
 /** @returns {Array<HTMLElement>} */
@@ -439,7 +501,11 @@ function getElements(element, wrapper) {
   )
 }
 
+/**
+ * @param {object} _
+ * @param {TranslatedOptionsType} _.options */
 function SlideManipulation({ options }) {
+  const { strategy } = options
   const slides = options.slides || []
 
   return {
@@ -450,15 +516,7 @@ function SlideManipulation({ options }) {
 
   function setPositions(slidePositions) {
     slides.forEach((slide, idx) => {
-      const { distance } = slidePositions[idx]
-
-      const absoluteDistance = distance * options.widthOrHeight
-      const pos =
-        absoluteDistance -
-        idx *
-          // this bit can be moved to options as soon as I can think of a name:
-          (options.sizePerSlide - options.spacingPerSlide - options.visibleSpacing)
-
+      const pos = strategy.getSlidePosition(idx, slidePositions[idx])
       const [a, b] = options.isVerticalSlider ? [0, pos] : [pos, 0]
 
       const transformString = `translate3d(${a}px, ${b}px, 0)`
@@ -472,7 +530,7 @@ function SlideManipulation({ options }) {
     slides.forEach(slide => {
       // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
       // hmm, it seems this is not really how it currently works. The number of slides, slidesPerView and container size determines this
-      const style = `calc(${100 / options.slidesPerView}% - ${options.visibleSpacing}px)`
+      const style = strategy.getSizeStyle()
       slide.style[`min-${prop}`] = style
       slide.style[`max-${prop}`] = style
     })
@@ -503,12 +561,10 @@ function Track({ options, onIndexChanged, onMove }) {
   const {
     initialIndex,
     isLoop, isRubberband, isRtl, isCentered,
-    origin,
-    sizePerSlide,
-    widthOrHeight, slidesPerView,
-    trackLength, maxPosition,
+    widthOrHeight,
     isIndexOutOfBounds, numberOfSlides,
-    calculateIndexPosition,
+    ensureIndexInBounds,
+    strategy,
   } = options
   const speedAndDirectionTracking = SpeedAndDirectionTracking()
   let currentIdx = initialIndex
@@ -523,6 +579,7 @@ function Track({ options, onIndexChanged, onMove }) {
       return {
         calculateOutOfBoundsOffset,
         calculateIndexDistance,
+        getRelativeIdx,
         get currentIndexDistance() { return calculateIndexDistance(currentIdx) },
         get currentIdx()     { return currentIdx },
         get position()       { return position },
@@ -536,13 +593,13 @@ function Track({ options, onIndexChanged, onMove }) {
   }
   function move(delta, { isDrag, currentlyInAnimationFrame }) {
     position += isDrag && !isLoop ? adjustDragMovement(delta) : delta
-    const newIndex = calculateIndex(position)
+    const newIndex = strategy.calculateIndex(position)
     if (newIndex !== currentIdx && !isIndexOutOfBounds(newIndex)) {
       currentIdx = newIndex
       onIndexChanged(newIndex)
     }
     progress = calculateTrackProgress(position)
-    slidePositions = calculateSlidePositions(progress)
+    slidePositions = strategy.calculateSlidePositions(progress)
     onMove({ slidePositions, currentlyInAnimationFrame })
   }
   function adjustDragMovement(delta) {
@@ -560,75 +617,55 @@ function Track({ options, onIndexChanged, onMove }) {
   function calculateOutOfBoundsOffset(delta) {
     const newPosition = position + delta
     return (
-      newPosition > trackLength ? newPosition - trackLength :
+      newPosition > strategy.trackLength ? newPosition - strategy.trackLength :
       newPosition < 0           ? newPosition :
       0
     )
   }
   function calculateIndexDistance(idx) {
-    return -(-calculateIndexPosition(idx) + position)
+    return -(-strategy.calculateIndexPosition(idx) + position)
   }
   function calculateTrackProgress(position) {
     return isLoop
-      ? (position % maxPosition) / maxPosition
-      : position / maxPosition
+      ? (position % strategy.maxPosition) / strategy.maxPosition
+      : position / strategy.maxPosition
   }
-  function calculateIndex(position) {
-    return Math.round(position / sizePerSlide)
-  }
-  // hmmm, this has to move out. It's greatly tied to the way slides are represented.
-  // This library provides great freedom in how slides are represented, the different types of
-  // slides require different approaches:
-  // - number of slides requires people to use the 'details' to position stuff themselves
-  // - slides from html elements uses this method. And here we could imagine a different approach
-  //   using slides that have different sizes for example. Instead of giving them a size we could
-  //   read their size
-  // Anyway, it would be helpful if these 'strategies' could be plugged in
-  function calculateSlidePositions(progress) {
-    // todo - option for not calculating slides that are not in sight
-    const slidePositions = []
-    const normalizedrogress = progress < 0 && isLoop ? progress + 1 : progress
-    for (let idx = 0; idx < numberOfSlides; idx++) {
-      let distance =
-        (((1 / numberOfSlides) * idx - normalizedrogress) * numberOfSlides) /
-          slidesPerView +
-          origin
-      if (isLoop)
-        distance +=
-          distance > (numberOfSlides - 1) / slidesPerView  ? -(numberOfSlides / slidesPerView) :
-          distance < -(numberOfSlides / slidesPerView) + 1 ? numberOfSlides / slidesPerView :
-          0
-      const slideFactor = 1 / slidesPerView
-      const left = distance + slideFactor
-      const portion = (
-        left < slideFactor ? left / slideFactor :
-        left > 1           ? 1 - ((left - 1) * slidesPerView) / 1 :
-        1
-      )
-      slidePositions.push({
-        portion: portion < 0 || portion > 1 ? 0 : portion,
-        distance: !isRtl ? distance : distance * -1 + 1 - slideFactor
-      })
-    }
-    return slidePositions
-  }
+  /** @returns {import('..').TDetails} */
   function getDetails() {
     const trackProgressAbs = Math.abs(progress)
     const normalizedProgress = position < 0 ? 1 - trackProgressAbs : trackProgressAbs
     // note to self: check these properties, you broke backwards compatibility (for example widthOrHeight)
+    const { slidesPerView } = strategy.getDetails()
     return {
       direction:      speedAndDirectionTracking.direction,
       progressTrack:  normalizedProgress,
-      progressSlides: (normalizedProgress * options.numberOfSlides) / (options.numberOfSlides - 1), // what if length is 1? devision by 0
+      progressSlides: (normalizedProgress * numberOfSlides) / (numberOfSlides - 1), // what if length is 1? devision by 0
       positions:      slidePositions,
-      position:       position,
+      position,
       speed:          speedAndDirectionTracking.speed,
-      relativeSlide:  options.ensureIndexInBounds(currentIdx),
+      relativeSlide:  ensureIndexInBounds(currentIdx),
       absoluteSlide:  currentIdx,
-      size:           options.numberOfSlides,
-      slidesPerView:  options.slidesPerView,
-      widthOrHeight:  options.widthOrHeight,
+      size:           numberOfSlides,
+      widthOrHeight,
+      slidesPerView,
     }
+  }
+  // The logic in this function does not seem quite right, it seems to wrongly decide between
+  // left and right by comparing (the normalized) idx to the current position
+  function getRelativeIdx(idx, nearest) {
+    const relativeIdx = options.ensureIndexInBounds(idx) // here we lose the direction
+    const current = options.ensureIndexInBounds(currentIdx)
+    const left = current < relativeIdx
+      ? -current - options.numberOfSlides + relativeIdx
+      : -(current - relativeIdx)
+    const right = current > relativeIdx
+      ? options.numberOfSlides - current + relativeIdx
+      : relativeIdx - current
+    const add = (
+      nearest ? (Math.abs(left) <= right ? left : right) :
+      relativeIdx < current ? left : right // here we decide left or right based on the abs value of the relative index
+    )
+    return currentIdx + add
   }
 }
 
@@ -769,6 +806,7 @@ function DragHandling({
 
   function moveSnapOne() {
     const direction = track.direction
+    // TODO: this is currently broken, slidesPerView is a strategy, figuring out the meaning requires more thought
     const startIndex = options.slidesPerView === 1 && direction !== 0
         ? touchIndexStart
         : track.currentIdx
@@ -797,10 +835,10 @@ function DragHandling({
 
     const friction = options.friction / Math.pow(Math.abs(track.speed), -0.5)
     const distance = (Math.pow(track.speed, 2) / friction) * Math.sign(track.speed)
-    const idxTrend = (track.position + distance) / options.sizePerSlide
+    const idxTrend = options.strategy.calculateIndexTrend(track.position + distance)
     const idx      = track.direction === -1 ? Math.floor(idxTrend) : Math.ceil(idxTrend)
     return {
-      distance: idx * options.sizePerSlide - track.position,
+      distance: options.strategy.calculateIndexPosition(idx) - track.position,
       duration: Math.abs(track.speed / friction) * 6,
     }
   }
