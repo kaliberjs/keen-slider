@@ -380,17 +380,15 @@ function KeenSlider(container, options, fireEvent) {
     if we lose 'normal use' backwards compatibility.
   */
 
-  const slideManipulation = SlideManipulation({ options })
+  const htmlManipulation = HtmlManipulation(container, options)
   const { readOnly: track, ...trackManipulation } = Track({
     options,
     onIndexChanged() {
       fireEvent('slideChanged')
     },
     onMove({ slidePositions, currentlyInAnimationFrame }) {
-      if (options.slides) {
-        const context = currentlyInAnimationFrame ? 'fromAnimationFrame' : 'fromNonAnimationFrame'
-        writeToDOM[context](() => slideManipulation.setPositions(slidePositions))
-      }
+      const context = currentlyInAnimationFrame ? 'fromAnimationFrame' : 'fromNonAnimationFrame'
+      writeToDOM[context](() => htmlManipulation.handleMove(slidePositions))
       fireEvent('move')
     }
   })
@@ -412,13 +410,13 @@ function KeenSlider(container, options, fireEvent) {
     },
     onFirstDrag() {
       trackManipulation.resetSpeedAndDirectionTracking()
-      writeToDOM.fromNonAnimationFrame(() => container.setAttribute(attributeDragging, 'true')) // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
+      writeToDOM.fromNonAnimationFrame(htmlManipulation.handleFirstDrag)
     },
     onDrag({ distance, timeStamp }) {
       measureAndMove(distance, { isDrag: true, timeStamp, currentlyInAnimationFrame: false }) // note: was `drag: e.timeStamp`
     },
     onDragStop({ moveTo: { distance, duration } }) {
-      writeToDOM.fromNonAnimationFrame(() => container.removeAttribute(attributeDragging))
+      writeToDOM.fromNonAnimationFrame(htmlManipulation.handleDragStop)
       if (distance) {
         fireEvent('beforeChange')
         animatedMovement.moveTo({
@@ -453,8 +451,7 @@ function KeenSlider(container, options, fireEvent) {
   function sliderInit() {
     if (!container) return // this should probably throw an error, but there might be a use case, not sure
 
-    if (options.isVerticalSlider)
-      writeToDOM.fromNonAnimationFrame(() => container.setAttribute(attributeVertical, 'true'))
+    writeToDOM.fromNonAnimationFrame(htmlManipulation.handleInit)
 
     sliderResize()
 
@@ -466,15 +463,11 @@ function KeenSlider(container, options, fireEvent) {
   function sliderDestroy() {
     if (dragHandling) dragHandling.stopListening()
 
-    writeToDOM.fromNonAnimationFrame(() => {
-      if (options.slides) slideManipulation.removeStyles()
-      if (container && container.hasAttribute(attributeVertical))
-        container.removeAttribute(attributeVertical)
-    })
+    writeToDOM.fromNonAnimationFrame(htmlManipulation.handleDestroy)
   }
 
   function sliderResize() {
-    if (options.slides) writeToDOM.fromNonAnimationFrame(slideManipulation.setWidthsOrHeights)
+    writeToDOM.fromNonAnimationFrame(htmlManipulation.handleResize)
 
     fireEvent('beforeChange')
     measureAndMove(track.currentIndexDistance, { isDrag: false, currentlyInAnimationFrame: false })
@@ -484,6 +477,43 @@ function KeenSlider(container, options, fireEvent) {
   function measureAndMove(delta, { isDrag, timeStamp = Date.now(), currentlyInAnimationFrame }) {
     trackManipulation.measureSpeedAndDirection(delta, timeStamp)
     trackManipulation.move(delta, { isDrag, currentlyInAnimationFrame })
+  }
+}
+
+/**
+ * @param {HTMLElement} container
+ * @param {TranslatedOptionsType} options
+ */
+function HtmlManipulation(container, options) {
+  const slideManipulation = SlideManipulation({ options })
+
+  return {
+    handleInit() {
+      if (options.isVerticalSlider)
+        container.setAttribute(attributeVertical, 'true')
+    },
+
+    handleResize() {
+      if (options.slides) slideManipulation.setWidthsOrHeights()
+    },
+
+    handleMove(slidePositions) {
+      if (options.slides) slideManipulation.setPositions(slidePositions)
+    },
+
+    handleFirstDrag() {
+      container.setAttribute(attributeDragging, 'true')  // note: not sure if this is backwards compatible, I changed it from true to 'true', but I don't know if browsers do the same behind the scenes
+    },
+
+    handleDragStop() {
+      container.removeAttribute(attributeDragging)
+    },
+
+    handleDestroy() {
+      if (options.slides) slideManipulation.removeStyles()
+      if (container && container.hasAttribute(attributeVertical))
+        container.removeAttribute(attributeVertical)
+    },
   }
 }
 
