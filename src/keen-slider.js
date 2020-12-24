@@ -410,7 +410,7 @@ function KeenSlider(container, options, fireEvent) {
     container, options, track,
     onDragStart({ timeStamp }) {
       animatedMovement.cancel()
-      trackManipulation.measureSpeedAndDirection(0, timeStamp)
+      trackManipulation.measureSpeedAndDirection(0, timeStamp) // does this even make sense? Seems we reset it on first drag
       fireEvent('dragStart')
     },
     onFirstDrag() {
