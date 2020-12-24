@@ -142,10 +142,6 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       containerSize, widthOrHeight,
     } = getContainerBasedOptions(container, slidesPerView)
 
-    // Note to self, determine how these options are used.
-    // It's a bit vague, but it might be possible to add the concept of 'behavior' and have
-    // different options result in different behaviors. An example would be having settings
-    // based on num slides and container size vs measured slide size and container size
     const baseOptions = {
       isLoop:                    !!options.loop,
       isRubberband:              !options.loop && options.rubberband,
@@ -153,7 +149,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
       isRtl:                     options.rtl,
       isCentered:                options.centered,
     }
-    const strategy = StrategyX(baseOptions, {
+    const strategy = FixedWidthSlides(baseOptions, {
       spacing: options.spacing,
       numberOfSlides,
       slidesPerView,
@@ -254,7 +250,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
 /** @param {BaseOptionType} options
  *  @returns {StrategyType} */
-function StrategyX(options, { spacing, slidesPerView, widthOrHeight, numberOfSlides }) {
+function FixedWidthSlides(options, { spacing, slidesPerView, widthOrHeight, numberOfSlides }) {
   const {
     isLoop, isRtl, isCentered,
   } = options
@@ -343,11 +339,12 @@ function StrategyX(options, { spacing, slidesPerView, widthOrHeight, numberOfSli
   }
 
   function getSlidePosition(idx, { distance }) {
-      const absoluteDistance = distance * widthOrHeight
-      const pos =
-        absoluteDistance -
-        idx *
-          (sizePerSlide - spacingPerSlide - visibleSpacing)
+    const absoluteDistance = distance * widthOrHeight
+    const pos =
+      absoluteDistance -
+      idx * (sizePerSlide - spacingPerSlide - visibleSpacing)
+
+    return pos
   }
 
   function calculateIndexPosition(idx) {
