@@ -806,8 +806,9 @@ function DragHandling({
 
   function moveSnapOne() {
     const direction = track.direction
-    // TODO: this is currently broken, slidesPerView is a strategy, figuring out the meaning requires more thought
-    const startIndex = options.slidesPerView === 1 && direction !== 0
+    // hmm, this below should be refined. If we drag past the start index, stop moving and release, it should snap to
+    // the nearest index of the start, the direction could be calculated by the position relative to the starting index
+    const startIndex = direction !== 0
         ? touchIndexStart
         : track.currentIdx
     return { distance: track.calculateIndexDistance(startIndex + direction) }
