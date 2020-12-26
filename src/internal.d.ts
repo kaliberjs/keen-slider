@@ -1,6 +1,5 @@
-import { TOptions } from '../index'
 
-export type BaseOptionType = {
+declare type BaseOptionType = {
   isLoop: boolean
   isRubberband: boolean
   isVerticalSlider: boolean
@@ -8,8 +7,8 @@ export type BaseOptionType = {
   isCentered: boolean
 }
 
-export type TranslatedOptionsType = BaseOptionType & {
-  enableDragControls: boolean
+declare type TranslatedOptionsType = BaseOptionType & {
+  enableDragging: boolean
   touchMultiplicator(val: number): number
   cancelOnLeave: boolean
   initialIndex: number
@@ -20,12 +19,10 @@ export type TranslatedOptionsType = BaseOptionType & {
   slides: Array<HTMLElement> | null
   numberOfSlides: number
   widthOrHeight: number
-  isIndexOutOfBounds(idx: number): boolean
-  ensureIndexInBounds(idx: number): number
   strategy: StrategyType
 }
 
-export type StrategyType = {
+declare type StrategyType = {
   maxPosition: number
   trackLength: number
   calculateSlidePositions(progress: number): Array<SlidePositionType>
@@ -43,3 +40,43 @@ type SlidePositionType = {
   portion: number
   distance: number
 }
+
+declare interface InternalKeenSliderType {
+  mount(): void
+  unmount(): void
+  resize(): void
+
+  next(): void
+  prev(): void
+
+  moveToSlide(idx: number, duration?: number): void
+  moveToSlideRelative(relativeIdx: number, nearest?: boolean, duration?: number): void
+
+  details(): TDetails
+}
+
+declare type TDetails = import('../index').TDetails
+declare type TOptionsEvents = import('../index').TOptionsEvents
+declare type TContainer = import('../index').TContainer
+declare type KeenSlider = import('../index').default
+
+/*
+  Don't worry too much about these definitions, they are (strange as it sounds) for my own sanity.
+  They help me preventing mistakes that can be caught by the typesystem
+*/
+declare type Tuple = [unknown] | {}
+declare type WaterfallResult<T, S extends Tuple> =
+  S extends [(x: T) => infer X, ...(infer Rest)] ? WaterfallResult<X, Rest> :
+  S extends [] ? T :
+  never
+declare type CompositeResult<T, S extends Tuple, U = {}> =
+  S extends [(input?: T, prev?: U) => infer X, ...(infer Rest)] ? CompositeResult<T, Rest, U & X> :
+  S extends [] ? U :
+  never
+declare type AugmentResult<S extends Tuple, U = {}> =
+  S extends [infer X, ...(infer Rest)] ? AugmentResult<Rest, U & X> :
+  S extends [] ? U :
+  never
+declare type TranslateWaterfall<S, T extends Tuple> = (input: S, translations: T) => WaterfallResult<S, T>
+declare type TranslateComposite<S, T extends Tuple> = (input: S, translations: T) => CompositeResult<S, T>
+declare type Augment<S, T extends Tuple> = (input: S, augmentations: T) => S & AugmentResult<T>

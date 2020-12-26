@@ -56,16 +56,21 @@ export type TOptions = {
   cancelOnLeave?: boolean
 }
 
+type TEventHandler = (instance: KeenSlider) => void
+
 export type TEvents = {
-  afterChange?: (instance: KeenSlider) => void
-  beforeChange?: (instance: KeenSlider) => void
-  created?: (instance: KeenSlider) => void
-  dragEnd?: (instance: KeenSlider) => void
-  dragStart?: (instance: KeenSlider) => void
-  destroyed?: (instance: KeenSlider) => void
-  mounted?: (instance: KeenSlider) => void
-  move?: (instance: KeenSlider) => void
-  slideChanged?: (instance: KeenSlider) => void
+  afterChange?: TEventHandler
+  beforeChange?: TEventHandler
+  created?: TEventHandler
+  dragStart?: TEventHandler
+  firstDrag?: TEventHandler
+  dragEnd?: TEventHandler
+  destroyed?: TEventHandler
+  mounted?: TEventHandler
+  unmounted?: TEventHandler
+  move?: TEventHandler
+  slideChanged?: TEventHandler
+  sliderResize?: TEventHandler
 }
 
 export type TOptionsEvents = TOptions & TEvents

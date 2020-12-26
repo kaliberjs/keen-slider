@@ -1,6 +1,5 @@
 import './polyfills'
 import KeenSliderType, { TOptionsEvents, TOptions, TEvents, TContainer } from '../index'
-import { TranslatedOptionsType, StrategyType, BaseOptionType } from './internal'
 
 /** @type {TOptions} */
 const defaultOptions = {
@@ -92,6 +91,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     },
     details() { return slider.current.details() },
   }
+  /** @type {{ current: InternalKeenSliderType }} */
   const slider = { current: null }
 
   sliderInit()
@@ -106,7 +106,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
   function sliderDestroy() {
     eventsRemove()
-    slider.current.destroy()
+    slider.current.unmount()
     fireEvent('destroyed')
   }
 
@@ -120,7 +120,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
   // this breaks some of the backwards compatibility because it triggers a lot more mounts and unmounts
   // than in the previous version
   function sliderReplace(options) {
-    slider.current.destroy()
+    slider.current.unmount()
     sliderCreate(options)
   }
 
@@ -158,7 +158,7 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
     const translatedOptions = {
       ...baseOptions,
       initialIndex:              options.initial,
-      enableDragControls:        !!options.controls,
+      enableDragging:            !!options.controls,
       cancelOnLeave:             options.cancelOnLeave,
       preventEventAttributeName: options.preventEvent,
       duration:                  options.duration,
@@ -167,13 +167,6 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
       touchMultiplicator, slides, numberOfSlides, containerSize,
       widthOrHeight, strategy,
-
-      isIndexOutOfBounds(idx) {
-        return !options.loop && (idx < 0 || idx > numberOfSlides - 1)
-      },
-      ensureIndexInBounds(idx) {
-        return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
-      },
     }
     return translatedOptions
 
@@ -209,6 +202,9 @@ export default function PublicKeenSlider(initialContainer, initialOptions = {}) 
 
     function getContainerBasedOptions(container, slidesPerView) {
       const containerSize   = options.vertical ? container.offsetHeight : container.offsetWidth
+      // so, this does not make much sense, in the default values sliderPerView === 1, that means we
+      // clamp the value between 0 and infinity...
+      // even with 2 slides per view we clamp it between 0 and the containerSize - 1
       const spacing         = clampValue(options.spacing, 0, containerSize / (slidesPerView - 1) - 1)
       const widthOrHeight   = containerSize + spacing
 
@@ -362,6 +358,7 @@ function FixedWidthSlides(options, { spacing, slidesPerView, widthOrHeight, numb
  * @param {HTMLElement} container
  * @param {TranslatedOptionsType} options
  * @param {(event: keyof TEvents) => void} fireEvent
+ * @returns {InternalKeenSliderType}
  */
 function KeenSlider(container, options, fireEvent) {
   /*
@@ -401,7 +398,7 @@ function KeenSlider(container, options, fireEvent) {
       fireEvent('afterChange')
     }
   })
-  const dragHandling = options.enableDragControls && DragHandling({
+  const dragHandling = options.enableDragging && DragHandling({
     container, options, track,
     onDragStart({ timeStamp }) {
       animatedMovement.cancel()
@@ -411,6 +408,7 @@ function KeenSlider(container, options, fireEvent) {
     onFirstDrag() {
       trackManipulation.resetSpeedAndDirectionTracking()
       writeToDOM.fromNonAnimationFrame(htmlManipulation.handleFirstDrag)
+      fireEvent('firstDrag')
     },
     onDrag({ distance, timeStamp }) {
       measureAndMove(distance, { isDrag: true, timeStamp, currentlyInAnimationFrame: false }) // note: was `drag: e.timeStamp`
@@ -432,7 +430,7 @@ function KeenSlider(container, options, fireEvent) {
 
   return {
     mount: sliderInit,
-    destroy: sliderDestroy,
+    unmount: sliderDestroy,
     resize: sliderResize,
 
     next() { animatedMovement.moveToIdx(track.currentIdx + 1) },
@@ -464,10 +462,12 @@ function KeenSlider(container, options, fireEvent) {
     if (dragHandling) dragHandling.stopListening()
 
     writeToDOM.fromNonAnimationFrame(htmlManipulation.handleDestroy)
+    fireEvent('unmounted')
   }
 
   function sliderResize() {
     writeToDOM.fromNonAnimationFrame(htmlManipulation.handleResize)
+    fireEvent('sliderResize')
 
     fireEvent('beforeChange')
     measureAndMove(track.currentIndexDistance, { isDrag: false, currentlyInAnimationFrame: false })
@@ -589,8 +589,7 @@ function Track({ options, onIndexChanged, onMove }) {
     initialIndex,
     isLoop, isRubberband, isRtl, isCentered,
     widthOrHeight,
-    isIndexOutOfBounds, numberOfSlides,
-    ensureIndexInBounds,
+    numberOfSlides,
     strategy,
   } = options
   const speedAndDirectionTracking = SpeedAndDirectionTracking()
@@ -680,19 +679,25 @@ function Track({ options, onIndexChanged, onMove }) {
   // The logic in this function does not seem quite right, it seems to wrongly decide between
   // left and right by comparing (the normalized) idx to the current position
   function getRelativeIdx(idx, nearest) {
-    const relativeIdx = options.ensureIndexInBounds(idx) // here we lose the direction
-    const current = options.ensureIndexInBounds(currentIdx)
+    const relativeIdx = ensureIndexInBounds(idx) // here we lose the direction
+    const current = ensureIndexInBounds(currentIdx)
     const left = current < relativeIdx
-      ? -current - options.numberOfSlides + relativeIdx
+      ? -current - numberOfSlides + relativeIdx
       : -(current - relativeIdx)
     const right = current > relativeIdx
-      ? options.numberOfSlides - current + relativeIdx
+      ? numberOfSlides - current + relativeIdx
       : relativeIdx - current
     const add = (
       nearest ? (Math.abs(left) <= right ? left : right) :
       relativeIdx < current ? left : right // here we decide left or right based on the abs value of the relative index
     )
     return currentIdx + add
+  }
+  function isIndexOutOfBounds(idx) {
+    return !isLoop && (idx < 0 || idx > numberOfSlides - 1)
+  }
+  function ensureIndexInBounds(idx) {
+    return ((idx % numberOfSlides) + numberOfSlides) % numberOfSlides
   }
 }
 
