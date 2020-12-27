@@ -33,9 +33,6 @@ export type TDetails = {
 export type TSlidesPerViewGetter = () => number
 
 export type TOptions = {
-  breakpoints?: {
-    [key: string]: Omit<TOptionsEvents, 'breakpoints'>
-  }
   centered?: boolean
   controls?: boolean
   dragSpeed?: number | ((val: number, instance: KeenSlider) => number)
@@ -73,7 +70,13 @@ export type TEvents = {
   sliderResize?: TEventHandler
 }
 
-export type TOptionsEvents = TOptions & TEvents
+export type TBreakpoints = {
+  breakpoints?: {
+    [key: string]: TOptions & TEvents
+  }
+}
+
+export type TOptionsEvents = TOptions & TEvents & TBreakpoints
 
 export default class KeenSlider {
   constructor(container: TContainer, options?: TOptionsEvents)

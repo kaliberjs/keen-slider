@@ -1,21 +1,17 @@
 const { EventBookKeeper } = require('../machinery')
 
 /**
- * TODO: breakpoints should be an array
- *
  * @template {{}} T
- * @typedef {{ breakpoints?: { [key: string]: T }}} Breakpoints
+ * @param {{
+ *   initialOptions: T,
+ *   breakpoints?: Array<[string, T]>
+ *   onOptionsChanged: (options: T) => void
+ * }} props
  */
-
-/**
- * @template {{}} T
- * @param {T & Breakpoints<T>} initialOptions
- * @param {{ onOptionsChanged: (options: T) => void }} props
- */
-export function BreakpointBasedOptions(initialOptions, { onOptionsChanged }) {
+export function BreakpointBasedOptions({ initialOptions, breakpoints = [], onOptionsChanged }) {
   const { eventAdd, eventsRemove } = EventBookKeeper()
 
-  let optionsWrapper = OptionsWrapper(initialOptions)
+  let optionsWrapper = OptionsWrapper(initialOptions, breakpoints)
 
   eventAdd(window, 'resize', handleResize)
 
@@ -23,14 +19,21 @@ export function BreakpointBasedOptions(initialOptions, { onOptionsChanged }) {
     get options() {
       return optionsWrapper.options
     },
-    /** @param {T} newOptions */
+    /**
+     * @deprecated
+     * @param {T} newOptions
+     */
     update(newOptions) {
-      optionsWrapper = OptionsWrapper({ ...initialOptions, ...newOptions })
+      optionsWrapper = OptionsWrapper({ ...initialOptions, ...newOptions }, breakpoints)
       return optionsWrapper.options
     },
-    /** @param {T} newOptions */
-    replace(newOptions) {
-      optionsWrapper = OptionsWrapper(newOptions)
+    /**
+     * @deprecated
+     * @param {T} newOptions
+     * @param {Array<[string, T]>} newBreakpoints
+     */
+    replace(newOptions, newBreakpoints) {
+      optionsWrapper = OptionsWrapper(newOptions, newBreakpoints)
       return optionsWrapper.options
     },
     destroy() {
@@ -48,41 +51,37 @@ export function BreakpointBasedOptions(initialOptions, { onOptionsChanged }) {
 
 /**
  * @template {{}} T
- * @param {T} initialOptions */
-function OptionsWrapper(initialOptions) {
-  let currentBreakpoint = null
-  let options = determineOptions(initialOptions)
+ * @param {T} initialOptions
+ * @param {Array<[string, T]>} breakpoints
+ */
+function OptionsWrapper(initialOptions, breakpoints) {
+  let currentBreakpointOptions = null
+  let options = determineOptions({ currentOptions: initialOptions })
 
   return {
     get options() { return options },
     refresh() {
-      const previousOptions = options;
-      options = determineOptions(initialOptions, options)
-      return { optionsChanged: previousOptions !== options }
+      const currentOptions = options
+      options = determineOptions({ currentOptions })
+      return { optionsChanged: currentOptions !== options }
     },
   }
 
-  /**
-   * @param {T & Breakpoints<T>} initialOptions
-   * @param {T} currentOptions
-   * @returns {T}
-   */
-  function determineOptions(initialOptions, currentOptions = initialOptions) {
-    const breakpoints = initialOptions.breakpoints || {}
-    const breakpoint = determineLastValidBreakpoint(breakpoints)
-    if (breakpoint === currentBreakpoint) return currentOptions
+  /** @param {{ currentOptions: T }} props */
+  function determineOptions({ currentOptions }) {
+    const breakpointOptions = determineLastValidBreakpointOptions()
+    if (breakpointOptions === currentBreakpointOptions) return currentOptions
 
-    currentBreakpoint = breakpoint
-    const breakpointOptions = breakpoints[currentBreakpoint] || initialOptions
+    currentBreakpointOptions = breakpointOptions
     const newOptions = { ...initialOptions, ...breakpointOptions }
     return newOptions
   }
 
-  function determineLastValidBreakpoint(breakpoints) {
-    let lastValid
-    for (let value in breakpoints) { // there is no guarantee that this will have the correct order, breakpoints should be in an array
-      if (window.matchMedia(value).matches) lastValid = value
-    }
-    return lastValid
+  function determineLastValidBreakpointOptions() {
+    return breakpoints.reduce(
+      /** @param {T} result */
+      (result, [breakpoint, options]) => window.matchMedia(breakpoint).matches ? options : result,
+      null
+    )
   }
 }

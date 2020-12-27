@@ -52,7 +52,7 @@ declare interface InternalKeenSliderType {
   moveToSlide(idx: number, duration?: number): void
   moveToSlideRelative(relativeIdx: number, nearest?: boolean, duration?: number): void
 
-  details(): TDetails
+  details(): OriginalDetails
 }
 
 declare type EventHandler<T = {}> = (info: { currentlyInAnimationFrame: boolean } & T) => void
@@ -71,9 +71,11 @@ declare type Events = {
 declare type EventInfo<T extends keyof Events> = Parameters<Events[T]>[0]
 
 declare type TDetails = import('../index').TDetails
-declare type TOptionsEvents = import('../index').TOptionsEvents
+declare type TOptionsEventsBreakpoints = import('../index').TOptionsEvents
 declare type TOptions = import('../index').TOptions
 declare type TEvents = import('../index').TEvents
+declare type TOptionsEvents = TOptions & TEvents
+declare type TBreakpoints = import('../index').TBreakpoints
 declare type TContainer = import('../index').TContainer
 declare type KeenSlider = import('../index').default
 

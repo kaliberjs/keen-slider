@@ -10,7 +10,6 @@ import { verticalAttributeOnContainer, dragAttributeOnContainer, setSlideSizes, 
 /** @type {TOptions} */
 const defaultOptions = {
   centered: false,
-  breakpoints: null,
   controls: true,
   dragSpeed: 1,
   friction: 0.0025,
@@ -30,11 +29,13 @@ const defaultOptions = {
 }
 
 /**
- * @param {TContainer} initialContainer
- * @param {TOptionsEvents} initialOptions
+ * @param {TContainer} container
+ * @param {TOptionsEventsBreakpoints} [options]
  * @returns {KeenSlider}
  */
-export function OriginalSlider(initialContainer, initialOptions) {
+export function OriginalSlider(container, { breakpoints, ...options } = {}) {
+  const initialOptions = { ...defaultOptions, ...options }
+
   // This is here because the 'hooks/events/callbacks' use it
   let publicApi = null
 
@@ -44,7 +45,7 @@ export function OriginalSlider(initialContainer, initialOptions) {
       if (!publicApi) throw new Error(`Note to self: public API has not been created yet, please delay creating the slider`)
 
       const translatedContainer = translateContainer(
-        initialContainer, [
+        container, [
           resolveContainer,
         ]
       )
@@ -78,7 +79,7 @@ export function OriginalSlider(initialContainer, initialOptions) {
       const augmentedSlider = augmentPublicApi(
         slider, [
           controlsApi({ optionsWrapper, sliderWrapper }),
-          refreshApi({ sliderWrapper, optionsWrapper, initialOptions }),
+          refreshApi({ optionsWrapper, sliderWrapper, initialOptions, convertBreakpoints }),
         ]
       )
 
@@ -87,12 +88,13 @@ export function OriginalSlider(initialContainer, initialOptions) {
   )
 
   const optionsWrapper = BreakpointBasedOptions(
-    { ...defaultOptions, ...initialOptions },
     {
+      initialOptions,
+      breakpoints: convertBreakpoints(breakpoints),
       onOptionsChanged(options) {
         if (options.resetSlide) sliderWrapper.replace(options)
         else sliderWrapper.replaceKeepIndex(options)
-      }
+      },
     }
   )
 
@@ -193,4 +195,17 @@ function hookIntoEvents(internalEvents) {
       })
     }
   )
+}
+
+/**
+ * This method should not exist. This is a flaw in the original implementation. The order of
+ * breakpoints matters, yet they are given as an object. The keys in an object do not have any
+ * guarantee for order. The original API for breakpoints should be changed to an array of tuples.
+ *
+ * @deprecated
+ * @param {TBreakpoints['breakpoints']} [breakpoints]
+ * @returns {Array<[string, TOptionsEvents]>}
+ */
+function convertBreakpoints(breakpoints) {
+  return Object.entries(breakpoints)
 }
