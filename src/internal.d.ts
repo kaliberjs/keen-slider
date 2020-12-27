@@ -59,11 +59,9 @@ declare type EventHandler<T = {}> = (info: { currentlyInAnimationFrame: boolean 
 declare type Events = {
   afterChange?: EventHandler
   beforeChange?: EventHandler
-  created?: EventHandler
   dragStart?: EventHandler
   firstDrag?: EventHandler
   dragEnd?: EventHandler
-  destroyed?: EventHandler
   mounted?: EventHandler
   unmounted?: EventHandler
   move?: EventHandler<{ slidePositions: Array<SlidePositionType> }>

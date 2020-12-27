@@ -1,4 +1,4 @@
-const { clampValue } = require('src/machinery')
+const { clampValue } = require('../machinery')
 
  /** @returns {StrategyType} */
 export function FixedWidthSlides({
