@@ -1,6 +1,15 @@
+const { EventBookKeeper } = require('../machinery')
+
+/**
+ * TODO: breakpoints should be an array
+ *
+ * @template {{}} T
+ * @typedef {{ breakpoints?: { [key: string]: T }}} Breakpoints
+ */
+
 /**
  * @template {{}} T
- * @param {T} initialOptions
+ * @param {T & Breakpoints<T>} initialOptions
  * @param {{ onOptionsChanged: (options: T) => void }} props
  */
 export function BreakpointBasedOptions(initialOptions, { onOptionsChanged }) {
@@ -54,7 +63,7 @@ function OptionsWrapper(initialOptions) {
   }
 
   /**
-   * @param {T} initialOptions
+   * @param {T & Breakpoints<T>} initialOptions
    * @param {T} currentOptions
    * @returns {T}
    */
@@ -65,7 +74,7 @@ function OptionsWrapper(initialOptions) {
 
     currentBreakpoint = breakpoint
     const breakpointOptions = breakpoints[currentBreakpoint] || initialOptions
-    const newOptions = { ...defaultOptions, ...initialOptions, ...breakpointOptions }
+    const newOptions = { ...initialOptions, ...breakpointOptions }
     return newOptions
   }
 

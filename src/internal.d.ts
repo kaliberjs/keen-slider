@@ -55,8 +55,27 @@ declare interface InternalKeenSliderType {
   details(): TDetails
 }
 
+declare type EventHandler<T = {}> = (info: { currentlyInAnimationFrame: boolean } & T) => void
+declare type Events = {
+  afterChange?: EventHandler
+  beforeChange?: EventHandler
+  created?: EventHandler
+  dragStart?: EventHandler
+  firstDrag?: EventHandler
+  dragEnd?: EventHandler
+  destroyed?: EventHandler
+  mounted?: EventHandler
+  unmounted?: EventHandler
+  move?: EventHandler<{ slidePositions: Array<SlidePositionType> }>
+  slideChanged?: EventHandler<{ newIndex: Number }>
+  sliderResize?: EventHandler
+}
+declare type EventInfo<T extends keyof Events> = Parameters<Events[T]>[0]
+
 declare type TDetails = import('../index').TDetails
 declare type TOptionsEvents = import('../index').TOptionsEvents
+declare type TOptions = import('../index').TOptions
+declare type TEvents = import('../index').TEvents
 declare type TContainer = import('../index').TContainer
 declare type KeenSlider = import('../index').default
 

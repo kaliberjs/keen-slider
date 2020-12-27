@@ -1,8 +1,34 @@
+import { containerSize, fixedWidthSlidesStrategy, renameOptions, slidesAndNumberOfSlides, slidesPerView, touchMultiplicator, widthOrHeight } from './original/optionTranslation';
 import { BaseSlider } from './BaseSlider';
-import { clampValue } from './machinery';
-import { BreakpointBasedOptions } from './modules/dynamicFeatures/BreakpointBasedOptions';
+import { getElements, translateContainer, translateOptions, augmentPublicApi } from './machinery';
+import { BreakpointBasedOptions } from './modules/BreakpointBasedOptions';
 import { DynamicOptionsWrapper } from './modules/DynamicOptionsWrapper';
 import { FixedWidthSlides } from './modules/FixedWidthStrategy';
+import { resolveContainer } from './original/containerTranslation';
+import { controlsApi, refreshApi } from './original/publicApiAugmentation';
+import { verticalAttributeOnContainer, dragAttributeOnContainer, setSlideSizes, setSlidePositions } from './original/eventBasedBehavior';
+
+/** @type {TOptions} */
+const defaultOptions = {
+  centered: false,
+  breakpoints: null,
+  controls: true,
+  dragSpeed: 1,
+  friction: 0.0025,
+  loop: false,
+  initial: 0,
+  duration: 500,
+  preventEvent: 'data-keen-slider-pe',
+  slides: '.keen-slider__slide',
+  vertical: false,
+  resetSlide: false,
+  slidesPerView: 1,
+  spacing: 0,
+  mode: 'snap',
+  rtl: false,
+  rubberband: true,
+  cancelOnLeave: true
+}
 
 /**
  * @param {TContainer} initialContainer
@@ -10,10 +36,13 @@ import { FixedWidthSlides } from './modules/FixedWidthStrategy';
  * @returns {KeenSlider}
  */
 export function OriginalSlider(initialContainer, initialOptions) {
+  // This is here because the 'hooks/events/callbacks' use it
+  let publicApi = null
 
   const sliderWrapper = DynamicOptionsWrapper(
     /** @param {TOptionsEvents} options */
     (options, sliderWrapper) => {
+      if (!publicApi) throw new Error(`Note to self: public API has not been created yet, please delay creating the slider`)
 
       const translatedContainer = translateContainer(
         initialContainer, [
@@ -22,15 +51,22 @@ export function OriginalSlider(initialContainer, initialOptions) {
       )
       const translatedOptions = translateOptions(
         options, [
-          baseOptions,
-          touchMultiplicator,
+          renameOptions,
+          touchMultiplicator(publicApi),
           slidesAndNumberOfSlides(translatedContainer),
           slidesPerView,
-          containerBasedOptions(translatedContainer),
-          fixedWidthStrategy,
+          containerSize(translatedContainer),
+          widthOrHeight,
+          fixedWidthSlidesStrategy,
         ]
       )
-      const slider = BaseSlider(translatedContainer, translatedOptions)
+      const fireEvent = hookIntoEvents(publicApi, options, [
+        verticalAttributeOnContainer(translatedContainer, options),
+        dragAttributeOnContainer(translatedContainer),
+        setSlideSizes(translatedOptions),
+        setSlidePositions(translatedOptions),
+      ])
+      const slider = BaseSlider(translatedContainer, translatedOptions, fireEvent)
 
       return augmentPublicApi(
         slider, [
@@ -42,7 +78,7 @@ export function OriginalSlider(initialContainer, initialOptions) {
   )
 
   const optionsWrapper = BreakpointBasedOptions(
-    initialOptions,
+    { ...defaultOptions, ...initialOptions },
     {
       onOptionsChanged(options) {
         if (options.resetSlide) sliderWrapper.replace(options)
@@ -51,9 +87,7 @@ export function OriginalSlider(initialContainer, initialOptions) {
     }
   )
 
-  sliderWrapper.create(optionsWrapper.options)
-
-  return {
+  publicApi = {
     destroy() {
       optionsWrapper.destroy()
       sliderWrapper.destroy()
@@ -79,147 +113,31 @@ export function OriginalSlider(initialContainer, initialOptions) {
 
     details() { return sliderWrapper.current.details() }
   }
+
+  // initiate after public API has been created
+  sliderWrapper.create(optionsWrapper.options)
+
+  return publicApi
 }
 
-/** @template {Tuple} S, T
- *  @type {TranslateWaterfall<T, S>} */
-function translateContainer(input, translations) {
-  return
-}
-/** @template {Tuple} S, T
- *  @type {TranslateComposite<T, S>} */
-function translateOptions(input, translations) {
-  return
-}
-
-
-/** @template {Tuple} S, T
- *  @type {Augment<T, S>} */
-function augmentPublicApi(input, augmentations) {
-  return
-}
-
-/** @param {TContainer} initialContainer */
-function resolveContainer(initialContainer) {
-  const [container] = getElements(initialContainer, document)
-  return container
-}
-
-function baseOptions({
-  loop, rubberband, vertical, rtl, centered,
-  initial, controls, cancelOnLeave, preventEvent, duration, friction, mode,
-}) {
-  return {
-    isLoop:           !!loop,
-    isRubberband:     !loop && rubberband,
-    isVerticalSlider: !!vertical,
-    isRtl:            !!rtl,
-    isCentered:       !!centered,
-
-    initialIndex:              initial,
-    enableDragging:            !!controls,
-    cancelOnLeave:             !!cancelOnLeave,
-    preventEventAttributeName: preventEvent,
-    duration:                  duration,
-    friction:                  friction,
-    dragEndMove:               mode,
-  }
-}
-
-function touchMultiplicator({ dragSpeed, rtl }) {
-  // TODO: get public API
-  const publicApi = {}
-  const dragSpeedMultiplicator = typeof dragSpeed === 'function'
-    ? val => dragSpeed(val, publicApi)
-    : val => val * dragSpeed
-
-  return {
-    /** @param {number} val */
-    touchMultiplicator(val) {
-      return dragSpeedMultiplicator(val) * (!rtl ? 1 : -1)
-    }
-  }
-}
-
-function slidesAndNumberOfSlides(container) { // side effects should be removed in a later stage
-  return ({ slides: slidesOption }) => {
-    if (typeof slidesOption === 'number')
-      return { slides: null, numberOfSlides: slidesOption }
-    else {
-      const slides = getElements(slidesOption, container)
-      return { slides, numberOfSlides: slides ? slides.length : 0 }
-    }
-  }
-}
-
-function slidesPerView({ slidesPerView, loop }, { numberOfSlides }) {
-  return {
-    slidesPerView: typeof slidesPerView === 'function'
-      ? slidesPerView()
-      : clampValue(slidesPerView, 1, Math.max(loop ? numberOfSlides - 1 : numberOfSlides, 1))
-  }
-}
-
-function containerBasedOptions(container) {
-  return ({ vertical, spacing: spacingOption }, { slidesPerView }) => {
-    const containerSize   = vertical ? container.offsetHeight : container.offsetWidth
-    // so, this does not make much sense, in the default values sliderPerView === 1, that means we
-    // clamp the value between 0 and infinity...
-    // even with 2 slides per view we clamp it between 0 and the containerSize - 1
-    const spacing         = clampValue(spacingOption, 0, containerSize / (slidesPerView - 1) - 1)
-    const widthOrHeight   = containerSize + spacing
-
-    return { containerSize, widthOrHeight }
-  }
-}
-
-// If you are wondering why I am destructuring the arguments and then simply put them back in an
-// object: it's because of type inference. It will warn me when I make a typeo. It also clearly
-// declares which properties are required
-function fixedWidthStrategy(
-  { spacing },
-  { slidesPerView, widthOrHeight, numberOfSlides, isLoop, isRtl, isCentered }) {
-  return {
-    strategy: FixedWidthSlides({
-      spacing, slidesPerView, widthOrHeight, numberOfSlides,
-      isLoop, isRtl, isCentered,
-    })
-  }
-}
-
-/* We should deprecate this */
-export function controlsApi({ optionsWrapper, sliderWrapper }) {
-  return {
-    controls(active) {
-      const newOptions = optionsWrapper.update({ controls: active })
-      sliderWrapper.replaceKeepIndex(newOptions)
-    }
-  }
-}
-
-/** We should depricate this API */
-export function refreshApi({ optionsWrapper, sliderWrapper, initialOptions }) {
-  return {
-    refresh(options) {
-      const newOptions = optionsWrapper.replaceOptions(options || initialOptions)
-      sliderWrapper.sliderReplace(newOptions)
-    }
-  }
-}
-
-/** @returns {Array<HTMLElement>} */
-function getElements(element, wrapper) {
+/**
+ * @param {KeenSlider} publicApi
+ * @param {TEvents} eventsFromOptions
+ * @param {Array<Events>} internalEvents
+ */
+function hookIntoEvents(publicApi, eventsFromOptions, internalEvents) {
   return (
-    typeof element === 'function'  ? convertToArray(element()) :
-    typeof element === 'string'    ? convertToArray(wrapper.querySelectorAll(element)) :
-    element instanceof HTMLElement ? [element] :
-    element instanceof NodeList    ? convertToArray(element) :
-    []
+    /**
+     * @template {keyof Events} T
+     * @param {T} event
+     * @param {EventInfo<T>} info
+     */
+    (event, info) => {
+      internalEvents.forEach(x => {
+        // @ts-ignore teypescript can not handle the argument type even though we force the info to being the correct type
+        if (x[event]) x[event](info)
+      })
+      if (eventsFromOptions[event]) eventsFromOptions[event](publicApi)
+    }
   )
-}
-
-/** @param {NodeList} nodeList
- *  @returns {Array<HTMLElement>} */
-function convertToArray(nodeList) {
-  return Array.prototype.slice.call(nodeList)
 }

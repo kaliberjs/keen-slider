@@ -8,7 +8,6 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "lib": ["dom", "esnext"],
-    "baseUrl": ".",
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,

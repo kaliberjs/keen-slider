@@ -357,7 +357,7 @@ function FixedWidthSlides(options, { spacing, slidesPerView, widthOrHeight, numb
 /**
  * @param {HTMLElement} container
  * @param {TranslatedOptionsType} options
- * @param {(event: keyof TEvents) => void} fireEvent
+ * @param {<T extends keyof Events>(event: T, info: EventInfo<T>) => void} fireEvent
  * @returns {InternalKeenSliderType}
  */
 function KeenSlider(container, options, fireEvent) {
@@ -380,13 +380,13 @@ function KeenSlider(container, options, fireEvent) {
   const htmlManipulation = HtmlManipulation(container, options)
   const { readOnly: track, ...trackManipulation } = Track({
     options,
-    onIndexChanged() {
-      fireEvent('slideChanged')
+    onIndexChanged({ newIndex, currentlyInAnimationFrame }) {
+      fireEvent('slideChanged', { newIndex, currentlyInAnimationFrame })
     },
     onMove({ slidePositions, currentlyInAnimationFrame }) {
       const context = currentlyInAnimationFrame ? 'fromAnimationFrame' : 'fromNonAnimationFrame'
       writeToDOM[context](() => htmlManipulation.handleMove(slidePositions))
-      fireEvent('move')
+      fireEvent('move', { slidePositions, currentlyInAnimationFrame })
     }
   })
   const animatedMovement = AnimatedMovement({
@@ -395,7 +395,7 @@ function KeenSlider(container, options, fireEvent) {
       measureAndMove(distance, { isDrag: false, currentlyInAnimationFrame: true })
     },
     onMovementComplete() {
-      fireEvent('afterChange')
+      fireEvent('afterChange', { currentlyInAnimationFrame: true })
     }
   })
   const dragHandling = options.enableDragging && DragHandling({
@@ -403,12 +403,12 @@ function KeenSlider(container, options, fireEvent) {
     onDragStart({ timeStamp }) {
       animatedMovement.cancel()
       trackManipulation.measureSpeedAndDirection(0, timeStamp) // does this even make sense? Seems we reset it on first drag
-      fireEvent('dragStart')
+      fireEvent('dragStart', { currentlyInAnimationFrame: false })
     },
     onFirstDrag() {
       trackManipulation.resetSpeedAndDirectionTracking()
       writeToDOM.fromNonAnimationFrame(htmlManipulation.handleFirstDrag)
-      fireEvent('firstDrag')
+      fireEvent('firstDrag', { currentlyInAnimationFrame: false })
     },
     onDrag({ distance, timeStamp }) {
       measureAndMove(distance, { isDrag: true, timeStamp, currentlyInAnimationFrame: false }) // note: was `drag: e.timeStamp`
@@ -416,7 +416,7 @@ function KeenSlider(container, options, fireEvent) {
     onDragStop({ moveTo: { distance, duration } }) {
       writeToDOM.fromNonAnimationFrame(htmlManipulation.handleDragStop)
       if (distance) {
-        fireEvent('beforeChange')
+        fireEvent('beforeChange', { currentlyInAnimationFrame: false })
         animatedMovement.moveTo({
           distance,
           duration,
@@ -424,7 +424,7 @@ function KeenSlider(container, options, fireEvent) {
         })
       }
 
-      fireEvent('dragEnd')
+      fireEvent('dragEnd', { currentlyInAnimationFrame: false })
     }
   })
 
@@ -455,23 +455,23 @@ function KeenSlider(container, options, fireEvent) {
 
     if (dragHandling) dragHandling.startListening()
 
-    fireEvent('mounted')
+    fireEvent('mounted', { currentlyInAnimationFrame: false })
   }
 
   function sliderDestroy() {
     if (dragHandling) dragHandling.stopListening()
 
     writeToDOM.fromNonAnimationFrame(htmlManipulation.handleDestroy)
-    fireEvent('unmounted')
+    fireEvent('unmounted', { currentlyInAnimationFrame: false })
   }
 
   function sliderResize() {
     writeToDOM.fromNonAnimationFrame(htmlManipulation.handleResize)
-    fireEvent('sliderResize')
+    fireEvent('sliderResize', { currentlyInAnimationFrame: false })
 
-    fireEvent('beforeChange')
+    fireEvent('beforeChange', { currentlyInAnimationFrame: false })
     measureAndMove(track.currentIndexDistance, { isDrag: false, currentlyInAnimationFrame: false })
-    fireEvent('afterChange')
+    fireEvent('afterChange', { currentlyInAnimationFrame: false })
   }
 
   function measureAndMove(delta, { isDrag, timeStamp = Date.now(), currentlyInAnimationFrame }) {
@@ -577,7 +577,7 @@ function SlideManipulation({ options }) {
 /**
  * @param {{
  *  options: TranslatedOptionsType,
- *  onIndexChanged(newIndex: number): void,
+ *  onIndexChanged({ newIndex: number, currentlyInAnimationFrame: boolean }): void,
  *  onMove(_: {
  *    slidePositions: Array<{ portion: number, distance: number }>,
  *    currentlyInAnimationFrame: boolean,
@@ -622,7 +622,7 @@ function Track({ options, onIndexChanged, onMove }) {
     const newIndex = strategy.calculateIndex(position)
     if (newIndex !== currentIdx && !isIndexOutOfBounds(newIndex)) {
       currentIdx = newIndex
-      onIndexChanged(newIndex)
+      onIndexChanged({ newIndex, currentlyInAnimationFrame })
     }
     progress = calculateTrackProgress(position)
     slidePositions = strategy.calculateSlidePositions(progress)
