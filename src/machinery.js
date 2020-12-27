@@ -5,7 +5,7 @@ export function clampValue(value, min, max) {
 /** @returns {Array<HTMLElement>} */
 export function getElements(element, wrapper) {
   return (
-    typeof element === 'function'  ? convertToArray(element()) :
+    typeof element === 'function'  ? convertToArray(element()) : // This option is probably for a specific use case, it should be removed as it makes things a lot more complicated
     typeof element === 'string'    ? convertToArray(wrapper.querySelectorAll(element)) :
     element instanceof HTMLElement ? [element] :
     element instanceof NodeList    ? convertToArray(element) :

@@ -22,10 +22,10 @@ export function renameOptions({
   }
 }
 
-export function touchMultiplicator(publicApi) {
+export function dragSpeedToTouchMultiplicator(publicApi) {
   return ({ dragSpeed }, { isRtl }) => {
     const dragSpeedMultiplicator = typeof dragSpeed === 'function'
-      ? val => dragSpeed(val, publicApi)
+      ? val => dragSpeed(val, publicApi) // We should deprecate passing the public API here
       : val => val * dragSpeed
 
     return {
@@ -37,7 +37,7 @@ export function touchMultiplicator(publicApi) {
   }
 }
 
-export function slidesAndNumberOfSlides(container) { // side effects should be removed in a later stage
+export function slidesAndNumberOfSlides(container) {
   return ({ slides: slidesOption }) => {
     if (typeof slidesOption === 'number')
       return { slides: null, numberOfSlides: slidesOption }

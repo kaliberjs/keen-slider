@@ -11,15 +11,11 @@ const attributeDragging = 'data-keen-slider-moves'
 export function verticalAttributeOnContainer(container, options) {
   return {
     mounted(info) {
-      if (!options.vertical) return
-
       writeToDOM.using(info, () => {
         container.setAttribute(attributeVertical, 'true')
       })
     },
     unmounted(info) {
-      if (!container || !container.hasAttribute(attributeVertical)) return
-
       writeToDOM.using(info, () => {
         container.removeAttribute(attributeVertical)
       })
@@ -47,15 +43,12 @@ export function dragAttributeOnContainer(container) {
 }
 
 /**
- * @param {TranslatedOptionsType} options
+ * @param {TranslatedOptionsType & { slides: Array<HTMLElement> }} options
  * @returns {Events}
  */
 export function setSlideSizes({ slides, strategy, isVerticalSlider }) {
   return {
     sliderResize(info) {
-      // TODO: These kinds of boolean checks should not be here, if the feature is not to be used it should not be installed
-      if (!slides) return
-
       const prop = isVerticalSlider ? 'height' : 'width'
       slides.forEach(slide => {
         // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
@@ -68,8 +61,6 @@ export function setSlideSizes({ slides, strategy, isVerticalSlider }) {
       })
     },
     unmounted(info) {
-      if (!slides) return
-
       writeToDOM.using(info, () => {
         const prop = isVerticalSlider ? 'height' : 'width'
         slides.forEach(removeStyles([`min-${prop}`, `max-${prop}`]))
@@ -79,14 +70,12 @@ export function setSlideSizes({ slides, strategy, isVerticalSlider }) {
 }
 
 /**
- * @param {TranslatedOptionsType} options
+ * @param {TranslatedOptionsType & { slides: Array<HTMLElement> }} options
  * @returns {Events}
  */
 export function setSlidePositions({ slides, isVerticalSlider, strategy }) {
   return {
     move(info) {
-      if (!slides) return
-
       slides.forEach((slide, idx) => {
         const pos = strategy.getSlidePosition(idx, info.slidePositions[idx])
         const [a, b] = isVerticalSlider ? [0, pos] : [pos, 0]
@@ -99,8 +88,6 @@ export function setSlidePositions({ slides, isVerticalSlider, strategy }) {
       })
     },
     unmounted(info) {
-      if (!slides) return
-
       writeToDOM.using(info, () => {
         slides.forEach(removeStyles(['transform', '-webkit-transform']))
       })

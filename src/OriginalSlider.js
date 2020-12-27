@@ -1,4 +1,4 @@
-import { containerSize, fixedWidthSlidesStrategy, renameOptions, slidesAndNumberOfSlides, slidesPerView, touchMultiplicator, widthOrHeight } from './original/optionTranslation';
+import { containerSize, fixedWidthSlidesStrategy, renameOptions, slidesAndNumberOfSlides, slidesPerView, dragSpeedToTouchMultiplicator, widthOrHeight } from './original/optionTranslation';
 import { BaseSlider } from './BaseSlider';
 import { translateContainer, translateOptions, augmentPublicApi, EventBookKeeper } from './machinery';
 import { BreakpointBasedOptions } from './modules/BreakpointBasedOptions';
@@ -52,7 +52,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
       const translatedOptions = translateOptions(
         options, [
           renameOptions,
-          touchMultiplicator(publicApi),
+          dragSpeedToTouchMultiplicator(publicApi),
           slidesAndNumberOfSlides(translatedContainer),
           slidesPerView,
           containerSize(translatedContainer),
@@ -61,11 +61,11 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
         ]
       )
       const internalEventHandler = hookIntoEvents([
-        verticalAttributeOnContainer(translatedContainer, options),
         dragAttributeOnContainer(translatedContainer),
-        setSlideSizes(translatedOptions),
-        setSlidePositions(translatedOptions),
-      ])
+        options.vertical         && verticalAttributeOnContainer(translatedContainer, options),
+        translatedOptions.slides && setSlideSizes(translatedOptions),
+        translatedOptions.slides && setSlidePositions(translatedOptions),
+      ].filter(Boolean))
 
       const slider = BaseSlider(
         translatedContainer,

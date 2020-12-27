@@ -16,7 +16,6 @@ declare type TranslatedOptionsType = BaseOptionType & {
   duration: number
   friction: number
   dragEndMove: 'snap' | 'free-snap' | 'free'
-  slides: Array<HTMLElement> | null
   numberOfSlides: number
   widthOrHeight: number
   strategy: StrategyType
@@ -52,7 +51,7 @@ declare interface InternalKeenSliderType {
   moveToSlide(idx: number, duration?: number): void
   moveToSlideRelative(relativeIdx: number, nearest?: boolean, duration?: number): void
 
-  details(): OriginalDetails
+  details(): TDetails
 }
 
 declare type EventHandler<T = {}> = (info: { currentlyInAnimationFrame: boolean } & T) => void
@@ -99,3 +98,7 @@ declare type AugmentResult<S extends Tuple, U = {}> =
 declare type TranslateWaterfall<S, T extends Tuple> = (input: S, translations: T) => WaterfallResult<S, T>
 declare type TranslateComposite<S, T extends Tuple> = (input: S, translations: T) => CompositeResult<S, T>
 declare type Augment<S, T extends Tuple> = (input: S, augmentations: T) => S & AugmentResult<T>
+declare type RemoveFalsy<T extends Tuple> =
+  T extends [false | null | undefined | 0 | '', ...(infer Rest)] ? RemoveFalsy<Rest> :
+  T extends [infer X, ...(infer Rest)] ? [X, ...RemoveFalsy<Rest>] :
+  []
