@@ -1,92 +1,102 @@
 import { EventBookKeeper } from '../machinery'
 
 /**
-* @param {{
-*   container: any,
-*   options: TranslatedOptionsType,
-*   track: ReturnType<import('./Track').Track>['readOnly'],
-*   onDragStart(_: { timeStamp: number }): void,
-*   onFirstDrag(_: { timeStamp: number }): void,
-*   onDrag(_: { distance: number, timeStamp: number }): void,
-*   onDragStop(_: { moveTo: { distance: number, duration: number } }): void,
-* }} params
-*/
+ * @param {{
+ *   container: any,
+ *   options: TranslatedOptionsType,
+ *   track: ReturnType<import('./Track').Track>['readOnly'],
+ *   onDragStart(_: { timeStamp: number }): void,
+ *   onFirstDrag(_: { timeStamp: number }): void,
+ *   onDrag(_: { distance: number, timeStamp: number }): void,
+ *   onDragStop(_: { moveTo: { distance: number, duration: number } }): void,
+ * }} params
+ */
 export function DragHandling({
- container, options, track,
- onDragStart, onFirstDrag, onDrag, onDragStop,
+  container, options, track,
+  onDragStart, onFirstDrag, onDrag, onDragStop,
 }) {
- let touchIndexStart
+  let touchIndexStart
 
- const dragEndMoves = {
-   'free':      moveFree,
-   'free-snap': moveSnapFree,
-   'snap':      moveSnapOne,
-   'default':   moveSnapOne,
- }
+  const dragEndMoves = {
+    'free':      moveFree,
+    'free-snap': moveSnapFree,
+    'snap':      moveSnapOne,
+    'default':   moveSnapOne,
+  }
 
- const touchHandling = TouchHandling(container, options, {
-   onDragStart({ timeStamp }) {
-     touchIndexStart = track.currentIdx
-     onDragStart({ timeStamp })
-   },
-   onFirstDrag,
-   onDrag({ distance, timeStamp }) {
-     onDrag({ distance: options.touchMultiplicator(distance), timeStamp })
-   },
-   onDragStop: handleDragStop,
- })
+  const touchHandling = TouchHandling(container, options, {
+      onDragStart({ timeStamp }) {
+        touchIndexStart = track.currentIdx
+        onDragStart({ timeStamp })
+      },
+      onFirstDrag,
+      onDrag({ distance, timeStamp }) {
+        const adjustedDistance = options.touchMultiplicator(distance)
+        const outOfBoundsOffset = track.calculateOutOfBoundsOffset(adjustedDistance)
 
- return {
-   startListening: touchHandling.startListening,
-   stopListening : touchHandling.stopListening,
- }
+        const newDistance = !options.isLoop && options.isRubberband
+          ? rubberband(adjustedDistance, outOfBoundsOffset)
+          : adjustedDistance - outOfBoundsOffset
 
- function handleDragStop() {
-   const dragEndMove = dragEndMoves[options.dragEndMove] || dragEndMoves.default
+        onDrag({ distance: newDistance, timeStamp })
+      },
+      onDragStop() {
+        const dragEndMove = dragEndMoves[options.dragEndMove] || dragEndMoves.default
 
-   const { distance = 0, duration = options.duration } = dragEndMove()
-   onDragStop({ moveTo: { distance, duration } })
- }
+        const { distance = 0, duration = options.duration } = dragEndMove()
+        onDragStop({ moveTo: { distance, duration } })
+      },
+  })
 
- function moveSnapOne() {
-   const direction = track.direction
-   // hmm, this below should be refined. If we drag past the start index, stop moving and release, it should snap to
-   // the nearest index of the start, the direction could be calculated by the position relative to the starting index
-   const startIndex = direction !== 0
-       ? touchIndexStart
-       : track.currentIdx
-   return { distance: track.calculateIndexDistance(startIndex + direction) }
- }
+  return {
+    startListening: touchHandling.startListening,
+    stopListening : touchHandling.stopListening,
+  }
 
- function moveFree() {
-   // todo: refactor! working on it
-   const speed = track.speed
-   if (speed === 0) {
-     const isOutOfBounds = track.calculateOutOfBoundsOffset(0) !== 0
-     return isOutOfBounds && !options.isLoop
-       ? { distance: track.currentIndexDistance }
-       : { distance: 0 }
-   }
+  function rubberband(delta, outOfBoundsOffset) {
+    return delta * easingQuadLike(Math.abs(outOfBoundsOffset / options.widthOrHeight))
+    function easingQuadLike(t) { return (1 - t) * (1 - t) }
+  }
 
-   const friction = options.friction / Math.pow(Math.abs(speed), -0.5)
-   return {
-     distance: (Math.pow(speed, 2) / friction) * Math.sign(speed),
-     duration: Math.abs(speed / friction) * 6,
-   }
- }
+  function moveSnapOne() {
+    const direction = track.direction
+    // hmm, this below should be refined. If we drag past the start index, stop moving and release, it should snap to
+    // the nearest index of the start, the direction could be calculated by the position relative to the starting index
+    const startIndex = direction !== 0
+        ? touchIndexStart
+        : track.currentIdx
+    return { distance: track.calculateIndexDistance(startIndex + direction) }
+  }
 
- function moveSnapFree() {
-   if (track.speed === 0) return { distance: track.currentIndexDistance }
+  function moveFree() {
+    // todo: refactor! working on it
+    const speed = track.speed
+    if (speed === 0) {
+      const isOutOfBounds = track.calculateOutOfBoundsOffset(0) !== 0
+      return isOutOfBounds && !options.isLoop
+        ? { distance: track.currentIndexDistance }
+        : { distance: 0 }
+    }
 
-   const friction = options.friction / Math.pow(Math.abs(track.speed), -0.5)
-   const distance = (Math.pow(track.speed, 2) / friction) * Math.sign(track.speed)
-   const idxTrend = options.strategy.calculateIndexTrend(track.position + distance)
-   const idx      = track.direction === -1 ? Math.floor(idxTrend) : Math.ceil(idxTrend)
-   return {
-     distance: options.strategy.calculateIndexPosition(idx) - track.position,
-     duration: Math.abs(track.speed / friction) * 6,
-   }
- }
+    const friction = options.friction / Math.pow(Math.abs(speed), -0.5)
+    return {
+      distance: (Math.pow(speed, 2) / friction) * Math.sign(speed),
+      duration: Math.abs(speed / friction) * 6,
+    }
+  }
+
+  function moveSnapFree() {
+    if (track.speed === 0) return { distance: track.currentIndexDistance }
+
+    const friction = options.friction / Math.pow(Math.abs(track.speed), -0.5)
+    const distance = (Math.pow(track.speed, 2) / friction) * Math.sign(track.speed)
+    const idxTrend = options.strategy.calculateIndexTrend(track.position + distance)
+    const idx      = track.direction === -1 ? Math.floor(idxTrend) : Math.ceil(idxTrend)
+    return {
+      distance: options.strategy.calculateIndexPosition(idx) - track.position,
+      duration: Math.abs(track.speed / friction) * 6,
+    }
+  }
 }
 
 function TouchHandling(container, options, {

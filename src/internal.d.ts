@@ -1,13 +1,10 @@
-
-declare type BaseOptionType = {
+declare type TranslatedOptionsType = {
   isLoop: boolean
   isRubberband: boolean
   isVerticalSlider: boolean
   isRtl: boolean
   isCentered: boolean
-}
 
-declare type TranslatedOptionsType = BaseOptionType & {
   enableDragging: boolean
   touchMultiplicator(val: number): number
   cancelOnLeave: boolean

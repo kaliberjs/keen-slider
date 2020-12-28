@@ -37,7 +37,7 @@ export function BaseSlider(container, options, fireEvent) {
   const animatedMovement = AnimatedMovement({
     options, track,
     onMovement(distance) {
-      measureAndMove(distance, { isDrag: false, currentlyInAnimationFrame: true })
+      measureAndMove(distance, { currentlyInAnimationFrame: true })
     },
     onMovementComplete() {
       fireEvent('afterChange', { currentlyInAnimationFrame: true })
@@ -55,7 +55,7 @@ export function BaseSlider(container, options, fireEvent) {
       fireEvent('firstDrag', { currentlyInAnimationFrame: false })
     },
     onDrag({ distance, timeStamp }) {
-      measureAndMove(distance, { isDrag: true, timeStamp, currentlyInAnimationFrame: false }) // note: was `drag: e.timeStamp`
+      measureAndMove(distance, { timeStamp, currentlyInAnimationFrame: false }) // note: was `drag: e.timeStamp`
     },
     onDragStop({ moveTo: { distance, duration } }) {
       if (distance) {
@@ -109,12 +109,12 @@ export function BaseSlider(container, options, fireEvent) {
     fireEvent('sliderResize', { currentlyInAnimationFrame: false })
 
     fireEvent('beforeChange', { currentlyInAnimationFrame: false })
-    measureAndMove(track.currentIndexDistance, { isDrag: false, currentlyInAnimationFrame: false })
+    measureAndMove(track.currentIndexDistance, { currentlyInAnimationFrame: false })
     fireEvent('afterChange', { currentlyInAnimationFrame: false })
   }
 
-  function measureAndMove(delta, { isDrag, timeStamp = Date.now(), currentlyInAnimationFrame }) {
+  function measureAndMove(delta, { timeStamp = Date.now(), currentlyInAnimationFrame }) {
     trackManipulation.measureSpeedAndDirection(delta, timeStamp)
-    trackManipulation.move(delta, { isDrag, currentlyInAnimationFrame })
+    trackManipulation.move(delta, { currentlyInAnimationFrame })
   }
 }

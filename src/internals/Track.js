@@ -43,8 +43,8 @@ function Track({ options, onIndexChanged, onMove }) {
      }
    }
  }
- function move(delta, { isDrag, currentlyInAnimationFrame }) {
-   position += isDrag && !isLoop ? adjustDragMovement(delta) : delta
+ function move(delta, { currentlyInAnimationFrame }) {
+   position += delta
    const newIndex = strategy.calculateIndex(position)
    if (newIndex !== currentIdx && !isIndexOutOfBounds(newIndex)) {
      currentIdx = newIndex
@@ -54,23 +54,11 @@ function Track({ options, onIndexChanged, onMove }) {
    slidePositions = strategy.calculateSlidePositions(progress)
    onMove({ slidePositions, currentlyInAnimationFrame })
  }
- function adjustDragMovement(delta) {
-   const offset = calculateOutOfBoundsOffset(delta)
-   return (
-     offset === 0 ? delta :
-     isRubberband ? rubberband(delta) :
-     delta - offset
-   )
-   function rubberband(delta) {
-     return delta * easingQuadLike(Math.abs(offset / widthOrHeight))
-     function easingQuadLike(t) { return (1 - t) * (1 - t) }
-   }
- }
  function calculateOutOfBoundsOffset(delta) {
    const newPosition = position + delta
    return (
      newPosition > strategy.trackLength ? newPosition - strategy.trackLength :
-     newPosition < 0           ? newPosition :
+     newPosition < 0                    ? newPosition :
      0
    )
  }
