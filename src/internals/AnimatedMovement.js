@@ -1,6 +1,6 @@
 /**
  * @param {{
-  *   options: TranslatedOptionsType,
+  *   options: OptionsType,
   *   track: ReturnType<import('./Track').Track>['readOnly'],
   *   onMovementComplete(): void,
   *   onMovement(distance: number): void,
@@ -16,9 +16,11 @@ export function AnimatedMovement({ options, track, onMovementComplete, onMovemen
    }
 
    function moveTo({
-     distance, duration,
+     distance,
+     duration = options.defaultDuration,
      easing = function easeOutQuint(t) { return 1 + --t * t * t * t * t },
-     forceFinish, onMoveComplete = undefined
+     forceFinish,
+     onMoveComplete = undefined
    }) {
      animation.move({ distance, duration, easing,
        onMoveComplete: ({ moved }) => {
@@ -71,7 +73,6 @@ export function AnimatedMovement({ options, track, onMovementComplete, onMovemen
        onMoveComplete() {
          moveTo({
            distance: track.currentIndexDistance,
-           duration: 500,
            easing,
            forceFinish: true,
          })
@@ -79,7 +80,7 @@ export function AnimatedMovement({ options, track, onMovementComplete, onMovemen
      })
    }
 
-   function moveToIdx(idx, { duration = options.duration } = {}) {
+   function moveToIdx(idx, { duration = undefined } = {}) {
      // forceFinish is used to ignore boundaries when rubberband movement is active
      moveTo({ distance: track.calculateIndexDistance(idx), duration, forceFinish: true })
    }

@@ -1,20 +1,19 @@
 import { clampValue } from '../machinery'
 
-export /**
-* @param {{
-*  options: TranslatedOptionsType,
-*  onIndexChanged({ newIndex: number, currentlyInAnimationFrame: boolean }): void,
-*  onMove(_: {
-*    slidePositions: Array<{ portion: number, distance: number }>,
-*    currentlyInAnimationFrame: boolean,
-*  }): void
-* }} params
-*/
-function Track({ options, onIndexChanged, onMove }) {
+/**
+ * @param {{
+ *  options: OptionsType,
+ *  onIndexChanged({ newIndex: number, currentlyInAnimationFrame: boolean }): void,
+ *  onMove(_: {
+ *    slidePositions: Array<{ portion: number, distance: number }>,
+ *    currentlyInAnimationFrame: boolean,
+ *  }): void
+ * }} params
+ */
+export function Track({ options, onIndexChanged, onMove }) {
  const {
    initialIndex,
-   isLoop, isRubberband,
-   widthOrHeight,
+   isLoop,
    numberOfSlides,
    strategy,
  } = options
@@ -74,20 +73,18 @@ function Track({ options, onIndexChanged, onMove }) {
  function getDetails() {
    const trackProgressAbs = Math.abs(progress)
    const normalizedProgress = position < 0 ? 1 - trackProgressAbs : trackProgressAbs
-   // note to self: check these properties, you broke backwards compatibility (for example widthOrHeight)
-   const { slidesPerView } = strategy.getDetails()
+
    return {
      direction:      speedAndDirectionTracking.direction,
      progressTrack:  normalizedProgress,
-     progressSlides: (normalizedProgress * numberOfSlides) / (numberOfSlides - 1), // what if length is 1? devision by 0
+     progressSlides: (normalizedProgress * numberOfSlides) / (numberOfSlides - 1), // what if numberOfSlides is 1? devision by 0
      positions:      slidePositions,
      position,
      speed:          speedAndDirectionTracking.speed,
      relativeSlide:  ensureIndexInBounds(currentIdx),
      absoluteSlide:  currentIdx,
      size:           numberOfSlides,
-     widthOrHeight,
-     slidesPerView,
+     ...strategy.getDetails(),
    }
  }
  // The logic in this function does not seem quite right, it seems to wrongly decide between

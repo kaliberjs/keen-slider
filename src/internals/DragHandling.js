@@ -3,12 +3,12 @@ import { EventBookKeeper } from '../machinery'
 /**
  * @param {{
  *   container: any,
- *   options: TranslatedOptionsType,
+ *   options: OptionsType,
  *   track: ReturnType<import('./Track').Track>['readOnly'],
  *   onDragStart(_: { timeStamp: number }): void,
  *   onFirstDrag(_: { timeStamp: number }): void,
  *   onDrag(_: { distance: number, timeStamp: number }): void,
- *   onDragStop(_: { moveTo: { distance: number, duration: number } }): void,
+ *   onDragStop(_: { moveTo: { distance: number, duration?: number } }): void,
  * }} params
  */
 export function DragHandling({
@@ -43,7 +43,7 @@ export function DragHandling({
       onDragStop() {
         const dragEndMove = dragEndMoves[options.dragEndMove] || dragEndMoves.default
 
-        const { distance = 0, duration = options.duration } = dragEndMove()
+        const { distance = 0, duration } = dragEndMove()
         onDragStop({ moveTo: { distance, duration } })
       },
   })
@@ -54,7 +54,8 @@ export function DragHandling({
   }
 
   function rubberband(delta, outOfBoundsOffset) {
-    return delta * easingQuadLike(Math.abs(outOfBoundsOffset / options.widthOrHeight))
+    const containerSize = options.isVerticalSlider ? container.offsetHeight : container.offsetWidth
+    return delta * easingQuadLike(Math.abs(outOfBoundsOffset / containerSize))
     function easingQuadLike(t) { return (1 - t) * (1 - t) }
   }
 
@@ -78,7 +79,7 @@ export function DragHandling({
         : { distance: 0 }
     }
 
-    const friction = options.friction / Math.pow(Math.abs(speed), -0.5)
+    const friction = options.defaultFriction / Math.pow(Math.abs(speed), -0.5)
     return {
       distance: (Math.pow(speed, 2) / friction) * Math.sign(speed),
       duration: Math.abs(speed / friction) * 6,
@@ -88,7 +89,7 @@ export function DragHandling({
   function moveSnapFree() {
     if (track.speed === 0) return { distance: track.currentIndexDistance }
 
-    const friction = options.friction / Math.pow(Math.abs(track.speed), -0.5)
+    const friction = options.defaultFriction / Math.pow(Math.abs(track.speed), -0.5)
     const distance = (Math.pow(track.speed, 2) / friction) * Math.sign(track.speed)
     const idxTrend = options.strategy.calculateIndexTrend(track.position + distance)
     const idx      = track.direction === -1 ? Math.floor(idxTrend) : Math.ceil(idxTrend)
@@ -125,10 +126,10 @@ function TouchHandling(container, options, {
     eventAdd(container, 'mousedown', eventDragStart)
     eventAdd(container, 'touchstart', eventDragStart, { passive: true })
 
-    eventAdd(options.cancelOnLeave ? container : window, 'mousemove', eventDrag)
+    eventAdd(options.isDragCancelledOnLeave ? container : window, 'mousemove', eventDrag)
     eventAdd(container, 'touchmove', eventDrag, { passive: false })
 
-    if (options.cancelOnLeave) eventAdd(container, 'mouseleave', eventDragStop)
+    if (options.isDragCancelledOnLeave) eventAdd(container, 'mouseleave', eventDragStop)
     eventAdd(window   , 'mouseup', eventDragStop)
     eventAdd(container, 'touchend', eventDragStop, { passive: true })
     eventAdd(container, 'touchcancel', eventDragStop, { passive: true })
@@ -191,7 +192,7 @@ function TouchHandling(container, options, {
   }
 
   function eventIsIgnoreTarget(target) {
-    return target.hasAttribute(options.preventEventAttributeName)
+    return target.hasAttribute(options.preventTouchAttributeName)
   }
 
   function eventIsSlideMovement(e) {

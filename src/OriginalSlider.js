@@ -1,4 +1,4 @@
-import { containerSize, fixedWidthSlidesStrategy, renameOptions, slidesAndNumberOfSlides, slidesPerView, dragSpeedToTouchMultiplicator, widthOrHeight } from './original/optionTranslation';
+import { fixedWidthSlidesStrategy, renameOptions, slidesAndNumberOfSlides, dragSpeedToTouchMultiplicator } from './original/optionTranslation';
 import { BaseSlider } from './BaseSlider';
 import { translateContainer, translateOptions, augmentPublicApi, EventBookKeeper } from './machinery';
 import { BreakpointBasedOptions } from './modules/BreakpointBasedOptions';
@@ -7,7 +7,7 @@ import { resolveContainer } from './original/containerTranslation';
 import { controlsApi, refreshApi } from './original/publicApiAugmentation';
 import { verticalAttributeOnContainer, dragAttributeOnContainer, setSlideSizes, setSlidePositions } from './original/eventBasedBehavior';
 
-/** @type {TOptions} */
+/** @type {Required<TOptions>} */
 const defaultOptions = {
   centered: false,
   controls: true,
@@ -40,7 +40,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
   let publicApi = null
 
   const sliderWrapper = DynamicOptionsWrapper(
-    /** @param {TOptionsEvents} options */
+    /** @param {typeof initialOptions} options */
     (options, sliderWrapper) => {
       if (!publicApi) throw new Error(`Note to self: public API has not been created yet, please delay creating the slider`)
 
@@ -54,10 +54,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
           renameOptions,
           dragSpeedToTouchMultiplicator(publicApi),
           slidesAndNumberOfSlides(translatedContainer),
-          slidesPerView,
-          containerSize(translatedContainer),
-          widthOrHeight,
-          fixedWidthSlidesStrategy,
+          fixedWidthSlidesStrategy(translatedContainer),
         ]
       )
       const internalEventHandler = hookIntoEvents([

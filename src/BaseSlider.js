@@ -4,7 +4,7 @@ import { Track } from './internals/Track'
 
 /**
  * @param {HTMLElement} container
- * @param {TranslatedOptionsType} options
+ * @param {OptionsType} options
  * @param {<T extends keyof Events>(event: T, info: EventInfo<T>) => void} fireEvent
  * @returns {InternalKeenSliderType}
  */
@@ -43,7 +43,7 @@ export function BaseSlider(container, options, fireEvent) {
       fireEvent('afterChange', { currentlyInAnimationFrame: true })
     }
   })
-  const dragHandling = options.enableDragging && DragHandling({
+  const dragHandling = options.isDragEnabled && DragHandling({
     container, options, track,
     onDragStart({ timeStamp }) {
       animatedMovement.cancel()
@@ -79,10 +79,10 @@ export function BaseSlider(container, options, fireEvent) {
     next() { animatedMovement.moveToIdx(track.currentIdx + 1) },
     prev() { animatedMovement.moveToIdx(track.currentIdx - 1) },
 
-    moveToSlide(idx, duration = options.duration) {
+    moveToSlide(idx, duration) {
       animatedMovement.moveToIdx(idx, { duration })
     },
-    moveToSlideRelative(relativeIdx, nearest = false, duration = options.duration) {
+    moveToSlideRelative(relativeIdx, nearest = false, duration) {
       animatedMovement.moveToIdx(track.getRelativeIdx(relativeIdx, nearest), { duration })
     },
 

@@ -6,22 +6,25 @@ export function renameOptions({
   initial, controls, cancelOnLeave, preventEvent, duration, friction, mode,
 }) {
   return {
+    initialIndex: initial,
+
     isLoop:           !!loop,
     isRubberband:     !loop && rubberband,
     isVerticalSlider: !!vertical,
     isRtl:            !!rtl,
     isCentered:       !!centered,
 
-    initialIndex:              initial,
-    enableDragging:            !!controls,
-    cancelOnLeave:             !!cancelOnLeave,
-    preventEventAttributeName: preventEvent,
-    duration:                  duration,
-    friction:                  friction,
+    isDragEnabled:             !!controls,
+    isDragCancelledOnLeave:    !!cancelOnLeave,
+    preventTouchAttributeName: preventEvent,
     dragEndMove:               mode,
+
+    defaultDuration: duration,
+    defaultFriction: friction,
   }
 }
 
+// TODO: The version with dragSpeed = 1 can be a default for the base slider
 export function dragSpeedToTouchMultiplicator(publicApi) {
   return ({ dragSpeed }, { isRtl }) => {
     const dragSpeedMultiplicator = typeof dragSpeed === 'function'
@@ -48,42 +51,17 @@ export function slidesAndNumberOfSlides(container) {
   }
 }
 
-export function slidesPerView({ slidesPerView }, { isLoop, numberOfSlides }) {
-  return {
-    slidesPerView: typeof slidesPerView === 'function'
-      ? slidesPerView()
-      : clampValue(slidesPerView, 1, Math.max(isLoop ? numberOfSlides - 1 : numberOfSlides, 1))
-  }
-}
-
-export function containerSize(container) {
-  return ({ vertical }) => {
-    const containerSize   = vertical ? container.offsetHeight : container.offsetWidth
-
-    return { containerSize }
-  }
-}
-
-export function widthOrHeight({ spacing: spacingOption }, { slidesPerView, containerSize }) {
-  // so, this does not make much sense, in the default values sliderPerView === 1, that means we
-  // clamp the value between 0 and infinity...
-  // even with 2 slides per view we clamp it between 0 and the containerSize - 1
-  const spacing         = clampValue(spacingOption, 0, containerSize / (slidesPerView - 1) - 1)
-  const widthOrHeight   = containerSize + spacing
-
-  return { widthOrHeight }
-}
-
-// If you are wondering why I am destructuring the arguments and then simply put them back in an
-// object: it's because of type inference. It will warn me when I make a typeo. It also clearly
-// declares which properties are required
-export function fixedWidthSlidesStrategy(
-  { spacing },
-  { slidesPerView, widthOrHeight, numberOfSlides, isLoop, isRtl, isCentered }) {
-  return {
-    strategy: FixedWidthSlides({
-      spacing, slidesPerView, widthOrHeight, numberOfSlides,
-      isLoop, isRtl, isCentered,
-    })
+/** @param {HTMLElement} container */
+export function fixedWidthSlidesStrategy(container) {
+  // If you are wondering why I am destructuring the arguments and then simply put them back in an
+  // object: it's because of type inference. It will warn me when I make a typeo. It also clearly
+  // declares which properties are required
+  return ({ spacing, rtl, centered, slidesPerView }, { numberOfSlides, isLoop, isVerticalSlider }) => {
+    return {
+      strategy: FixedWidthSlides(container, {
+        spacing, numberOfSlides, slidesPerView,
+        isLoop, rtl, centered, isVerticalSlider,
+      })
+    }
   }
 }

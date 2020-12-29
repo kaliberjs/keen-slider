@@ -1,20 +1,20 @@
-declare type TranslatedOptionsType = {
+declare type OptionsType = {
+  initialIndex: number
+  numberOfSlides: number
+
   isLoop: boolean
   isRubberband: boolean
   isVerticalSlider: boolean
-  isRtl: boolean
-  isCentered: boolean
 
-  enableDragging: boolean
-  touchMultiplicator(val: number): number
-  cancelOnLeave: boolean
-  initialIndex: number
-  preventEventAttributeName: string
-  duration: number
-  friction: number
+  isDragEnabled: boolean
+  isDragCancelledOnLeave: boolean
+  preventTouchAttributeName: string
   dragEndMove: 'snap' | 'free-snap' | 'free'
-  numberOfSlides: number
-  widthOrHeight: number
+  touchMultiplicator(val: number): number
+
+  defaultDuration: number
+  defaultFriction: number
+
   strategy: StrategyType
 }
 
@@ -26,6 +26,7 @@ declare type StrategyType = {
   calculateIndexTrend(position: number): number
   getDetails(): {
     slidesPerView: number
+    widthOrHeight: number
   }
   getSizeStyle(): string
   getSlidePosition(idx: number, slidePosition: SlidePositionType )
@@ -95,7 +96,3 @@ declare type AugmentResult<S extends Tuple, U = {}> =
 declare type TranslateWaterfall<S, T extends Tuple> = (input: S, translations: T) => WaterfallResult<S, T>
 declare type TranslateComposite<S, T extends Tuple> = (input: S, translations: T) => CompositeResult<S, T>
 declare type Augment<S, T extends Tuple> = (input: S, augmentations: T) => S & AugmentResult<T>
-declare type RemoveFalsy<T extends Tuple> =
-  T extends [false | null | undefined | 0 | '', ...(infer Rest)] ? RemoveFalsy<Rest> :
-  T extends [infer X, ...(infer Rest)] ? [X, ...RemoveFalsy<Rest>] :
-  []

@@ -43,7 +43,7 @@ export function dragAttributeOnContainer(container) {
 }
 
 /**
- * @param {TranslatedOptionsType & { slides: Array<HTMLElement> }} options
+ * @param {OptionsType & { slides: Array<HTMLElement> }} options
  * @returns {Events}
  */
 export function setSlideSizes({ slides, strategy, isVerticalSlider }) {
@@ -70,7 +70,7 @@ export function setSlideSizes({ slides, strategy, isVerticalSlider }) {
 }
 
 /**
- * @param {TranslatedOptionsType & { slides: Array<HTMLElement> }} options
+ * @param {OptionsType & { slides: Array<HTMLElement> }} options
  * @returns {Events}
  */
 export function setSlidePositions({ slides, isVerticalSlider, strategy }) {

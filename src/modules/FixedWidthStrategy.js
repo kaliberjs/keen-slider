@@ -1,25 +1,38 @@
 const { clampValue } = require('../machinery')
 
- /** @returns {StrategyType} */
-export function FixedWidthSlides({
+ /**
+  * @param {HTMLElement} container
+  * @returns {StrategyType}
+  */
+export function FixedWidthSlides(container, {
   spacing,
-  slidesPerView, widthOrHeight, numberOfSlides,
-  isLoop, isRtl, isCentered,
+  slidesPerView: slidesPerViewOption, numberOfSlides,
+  isLoop, rtl, centered, isVerticalSlider
 }) {
+  const slidesPerView = typeof slidesPerViewOption === 'function'
+    ? slidesPerViewOption()
+    : clampValue(slidesPerViewOption, 1, Math.max(isLoop ? numberOfSlides - 1 : numberOfSlides, 1))
+
+  const containerSize = isVerticalSlider ? container.offsetHeight : container.offsetWidth
+  // so, this does not make much sense, in the default values sliderPerView === 1, that means we
+  // clamp the value between 0 and infinity...
+  // even with 2 slides per view we clamp it between 0 and the containerSize - 1
+  const clampedSpacing = clampValue(spacing, 0, containerSize / (slidesPerView - 1) - 1)
+  const widthOrHeight  = containerSize + clampedSpacing
 
   // only used for positioning and sizing
   const spacingPerSlide = spacing / slidesPerView
   const visibleSpacing  = spacingPerSlide * (slidesPerView - 1)
   const sizePerSlide    = widthOrHeight / slidesPerView
   // only used to calculate slide positions
-  const origin          = isCentered
+  const origin          = centered
     ? (widthOrHeight / 2 - sizePerSlide / 2) / widthOrHeight
     : 0
   // what is the difference between maxPosition and trackLength? They should be related
   const maxPosition     = (widthOrHeight * numberOfSlides) / slidesPerView
   const trackLength     = (
     widthOrHeight * (
-      numberOfSlides - 1 /* <- check if we need parentheses here */ * (isCentered ? 1 : slidesPerView)
+      numberOfSlides - 1 /* <- check if we need parentheses here */ * (centered ? 1 : slidesPerView)
     )
   ) / slidesPerView
 
@@ -66,16 +79,14 @@ export function FixedWidthSlides({
       )
       slidePositions.push({
         portion: portion < 0 || portion > 1 ? 0 : portion,
-        distance: !isRtl ? distance : distance * -1 + 1 - slideFactor
+        distance: !rtl ? distance : distance * -1 + 1 - slideFactor
       })
     }
     return slidePositions
   }
 
   function getDetails() {
-    return {
-      slidesPerView,
-    }
+    return { slidesPerView, widthOrHeight }
   }
 
   function calculateIndexTrend(position) {
@@ -106,6 +117,6 @@ export function FixedWidthSlides({
   function clampIndex(idx) {
     return isLoop
       ? idx
-      : clampValue(idx, 0, numberOfSlides - 1 - (isCentered ? 0 : slidesPerView - 1))
+      : clampValue(idx, 0, numberOfSlides - 1 - (centered ? 0 : slidesPerView - 1))
   }
 }

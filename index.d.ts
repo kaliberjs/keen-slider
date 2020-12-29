@@ -49,7 +49,6 @@ export type TOptions = {
   slidesPerView?: number | TSlidesPerViewGetter
   spacing?: number
   vertical?: boolean
-  inlineBlockMode?: boolean
   cancelOnLeave?: boolean
 }
 
@@ -78,6 +77,8 @@ export type TBreakpoints = {
 
 export type TOptionsEvents = TOptions & TEvents & TBreakpoints
 
+// TODO: KeenSlider is not actually a class, so `new` should not be used.
+// It is confusing that `new KeenSlider(...) instanceof KeenSlider` currently is `false`,
 export default class KeenSlider {
   constructor(container: TContainer, options?: TOptionsEvents)
   controls: (active: boolean) => void
