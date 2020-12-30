@@ -26,16 +26,13 @@ export type TDetails = {
   relativeSlide: number
   absoluteSlide: number
   size: number
-  slidesPerView: number
+  slidesPerView: number // this only makes sense if slides are of equal size
   widthOrHeight: number
 }
 
 export type TSlidesPerViewGetter = () => number
 
 export type TOptions = {
-  breakpoints?: {
-    [key: string]: Omit<TOptionsEvents, 'breakpoints'>
-  }
   centered?: boolean
   controls?: boolean
   dragSpeed?: number | ((val: number, instance: KeenSlider) => number)
@@ -52,23 +49,36 @@ export type TOptions = {
   slidesPerView?: number | TSlidesPerViewGetter
   spacing?: number
   vertical?: boolean
-  inlineBlockMode?: boolean
+  cancelOnLeave?: boolean
 }
+
+type TEventHandler = (instance: KeenSlider) => void
 
 export type TEvents = {
-  afterChange?: (instance: KeenSlider) => void
-  beforeChange?: (instance: KeenSlider) => void
-  created?: (instance: KeenSlider) => void
-  dragEnd?: (instance: KeenSlider) => void
-  dragStart?: (instance: KeenSlider) => void
-  destroyed?: (instance: KeenSlider) => void
-  mounted?: (instance: KeenSlider) => void
-  move?: (instance: KeenSlider) => void
-  slideChanged?: (instance: KeenSlider) => void
+  afterChange?: TEventHandler
+  beforeChange?: TEventHandler
+  created?: TEventHandler
+  dragStart?: TEventHandler
+  firstDrag?: TEventHandler
+  dragEnd?: TEventHandler
+  destroyed?: TEventHandler
+  mounted?: TEventHandler
+  unmounted?: TEventHandler
+  move?: TEventHandler
+  slideChanged?: TEventHandler
+  sliderResize?: TEventHandler
 }
 
-export type TOptionsEvents = TOptions & TEvents
+export type TBreakpoints = {
+  breakpoints?: {
+    [key: string]: TOptions & TEvents
+  }
+}
 
+export type TOptionsEvents = TOptions & TEvents & TBreakpoints
+
+// TODO: KeenSlider is not actually a class, so `new` should not be used.
+// It is confusing that `new KeenSlider(...) instanceof KeenSlider` currently is `false`,
 export default class KeenSlider {
   constructor(container: TContainer, options?: TOptionsEvents)
   controls: (active: boolean) => void
