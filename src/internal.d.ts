@@ -26,14 +26,22 @@ declare type StrategyType = {
   calculateIndex(position: number): number
   calculateIndexTrend(position: number): number
   calculateIndexPosition(idx: number): number
+}
 
-  // TODO: this should be a generic object, we could also remove this and have it as an extension of the public API for the original slider, not sure
-  /** @param {{ progress: number }} props */
-  getDetails({ progress }): {
-    slidesPerView: number
-    widthOrHeight: number
-    positions: Array<SlidePositionType>
-  }
+declare type Details = {
+  direction:      1 | 0 | -1
+  progressTrack:  number
+  progressSlides: number
+  position:       number
+  speed:          number
+  relativeSlide:  number
+  absoluteSlide:  number
+  size:           number
+  progress:       number
+}
+
+declare type StrategyDetails<T extends {}> = {
+  getDetails(details: Details): T
 }
 
 declare type HtmlSlideSizeStrategy = {
@@ -62,7 +70,7 @@ declare interface InternalKeenSliderType {
   moveToSlide(idx: number, duration?: number): void
   moveToSlideRelative(relativeIdx: number, nearest?: boolean, duration?: number): void
 
-  details(): TDetails
+  readonly details: Details
 }
 
 declare type EventHandler<T = {}> = (info: { currentlyInAnimationFrame: boolean } & T) => void

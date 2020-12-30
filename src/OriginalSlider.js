@@ -4,7 +4,7 @@ import { translateContainer, translateOptions, augmentPublicApi, EventBookKeeper
 import { BreakpointBasedOptions } from './modules/BreakpointBasedOptions';
 import { DynamicOptionsWrapper } from './modules/DynamicOptionsWrapper';
 import { resolveContainer } from './original/containerTranslation';
-import { controlsApi, refreshApi } from './original/publicApiAugmentation';
+import { controlsApi, detailsFromStrategy, refreshApi } from './original/publicApiAugmentation';
 import { verticalAttributeOnContainer, dragAttributeOnContainer, setSlideSizes, setSlidePositions } from './original/eventBasedBehavior';
 
 /** @type {Required<TOptions>} */
@@ -78,6 +78,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
         slider, [
           controlsApi({ optionsWrapper, sliderWrapper }),
           refreshApi({ optionsWrapper, sliderWrapper, initialOptions, convertBreakpoints }),
+          detailsFromStrategy({ strategy, slider }),
         ]
       )
 
@@ -122,7 +123,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
       sliderWrapper.current.moveToSlide(slide, duration)
     },
 
-    details() { return sliderWrapper.current.details() }
+    details() { return sliderWrapper.current.details }
   }
 
   // initiate after public API has been created

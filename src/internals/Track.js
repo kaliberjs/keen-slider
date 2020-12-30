@@ -66,7 +66,7 @@ export function Track({ options, onIndexChanged, onMove }) {
      ? (position % strategy.maxPosition) / strategy.maxPosition
      : position / strategy.maxPosition
  }
- /** @returns {TDetails} */
+ /** @returns {Details} */
  function getDetails() {
    const trackProgressAbs = Math.abs(progress)
    const normalizedProgress = position < 0 ? 1 - trackProgressAbs : trackProgressAbs
@@ -80,7 +80,7 @@ export function Track({ options, onIndexChanged, onMove }) {
      relativeSlide:  ensureIndexInBounds(currentIdx),
      absoluteSlide:  currentIdx,
      size:           numberOfSlides,
-     ...strategy.getDetails({ progress }),
+     progress,
    }
  }
  // The logic in this function does not seem quite right, it seems to wrongly decide between

@@ -86,7 +86,7 @@ export function BaseSlider(container, options, fireEvent) {
       animatedMovement.moveToIdx(track.getRelativeIdx(relativeIdx, nearest), { duration })
     },
 
-    details() { return track.details },
+    get details() { return track.details },
   }
 
   function sliderInit() {

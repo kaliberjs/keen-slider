@@ -1,3 +1,17 @@
+/**
+ * @template {{}} T
+ * @param {{ strategy: StrategyDetails<T>, slider: InternalKeenSliderType }} props
+ */
+export function detailsFromStrategy({ strategy, slider }) {
+  return {
+    /** @returns {Details & T} */
+    get details() {
+      const { details } = slider
+      return { ...details, ...strategy.getDetails(details) }
+    }
+  }
+}
+
 // I am using these complicated typescript definitions to keep track of deprecation
 // The two methods in this file cause a lot more complication than value while I question
 // their actual use outside of existing 'buggy' situations
