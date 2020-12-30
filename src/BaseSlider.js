@@ -30,8 +30,8 @@ export function BaseSlider(container, options, fireEvent) {
     onIndexChanged({ newIndex, currentlyInAnimationFrame }) {
       fireEvent('slideChanged', { newIndex, currentlyInAnimationFrame })
     },
-    onMove({ slidePositions, currentlyInAnimationFrame }) {
-      fireEvent('move', { slidePositions, currentlyInAnimationFrame })
+    onMove({ progress, currentlyInAnimationFrame }) {
+      fireEvent('move', { progress, currentlyInAnimationFrame })
     }
   })
   const animatedMovement = AnimatedMovement({

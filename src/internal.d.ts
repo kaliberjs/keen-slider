@@ -26,12 +26,13 @@ declare type StrategyType = {
   calculateIndex(position: number): number
   calculateIndexTrend(position: number): number
   calculateIndexPosition(idx: number): number
-  calculateSlidePositions(progress: number): Array<SlidePositionType>
 
   // TODO: this should be a generic object, we could also remove this and have it as an extension of the public API for the original slider, not sure
-  getDetails(): {
+  /** @param {{ progress: number }} props */
+  getDetails({ progress }): {
     slidesPerView: number
     widthOrHeight: number
+    positions: Array<SlidePositionType>
   }
 }
 
@@ -41,6 +42,7 @@ declare type HtmlSlideSizeStrategy = {
 }
 declare type HtmlSlidePositionsStrategy = {
   hasSlidePositionStragy: true
+  calculateSlidePositions(progress: number): Array<SlidePositionType>
   getSlidePosition(idx: number, slidePosition: SlidePositionType ): number
 }
 
@@ -72,7 +74,7 @@ declare type Events = {
   dragEnd?: EventHandler
   mounted?: EventHandler
   unmounted?: EventHandler
-  move?: EventHandler<{ slidePositions: Array<SlidePositionType> }>
+  move?: EventHandler<{ progress: number }>
   slideChanged?: EventHandler<{ newIndex: Number }>
   sliderResize?: EventHandler
 }

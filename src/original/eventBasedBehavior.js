@@ -80,8 +80,9 @@ export function setSlideSizes({ strategy, slides, isVerticalSlider }) {
 export function setSlidePositions({ strategy, slides, isVerticalSlider }) {
   return {
     move(info) {
+      const slidePositions = strategy.calculateSlidePositions(info.progress)
       slides.forEach((slide, idx) => {
-        const pos = strategy.getSlidePosition(idx, info.slidePositions[idx])
+        const pos = strategy.getSlidePosition(idx, slidePositions[idx])
         const [a, b] = isVerticalSlider ? [0, pos] : [pos, 0]
 
         const transformString = `translate3d(${a}px, ${b}px, 0)`

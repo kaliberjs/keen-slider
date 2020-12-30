@@ -5,7 +5,7 @@ import { clampValue } from '../machinery'
  *  options: OptionsType,
  *  onIndexChanged({ newIndex: number, currentlyInAnimationFrame: boolean }): void,
  *  onMove(_: {
- *    slidePositions: Array<{ portion: number, distance: number }>,
+ *    progress: number,
  *    currentlyInAnimationFrame: boolean,
  *  }): void
  * }} params
@@ -20,7 +20,6 @@ export function Track({ options, onIndexChanged, onMove }) {
  const speedAndDirectionTracking = SpeedAndDirectionTracking()
  let currentIdx = initialIndex
  let position = 0
- let slidePositions
  let progress
  return {
    move,
@@ -34,7 +33,6 @@ export function Track({ options, onIndexChanged, onMove }) {
        get currentIndexDistance() { return calculateIndexDistance(currentIdx) },
        get currentIdx()     { return currentIdx },
        get position()       { return position },
-       get slidePositions() { return slidePositions },
        get progress()       { return progress },
        get speed()     { return speedAndDirectionTracking.speed },
        get direction() { return speedAndDirectionTracking.direction },
@@ -50,8 +48,7 @@ export function Track({ options, onIndexChanged, onMove }) {
      onIndexChanged({ newIndex, currentlyInAnimationFrame })
    }
    progress = calculateTrackProgress(position)
-   slidePositions = strategy.calculateSlidePositions(progress)
-   onMove({ slidePositions, currentlyInAnimationFrame })
+   onMove({ progress, currentlyInAnimationFrame })
  }
  function calculateOutOfBoundsOffset(delta) {
    const newPosition = position + delta
@@ -78,13 +75,12 @@ export function Track({ options, onIndexChanged, onMove }) {
      direction:      speedAndDirectionTracking.direction,
      progressTrack:  normalizedProgress,
      progressSlides: (normalizedProgress * numberOfSlides) / (numberOfSlides - 1), // what if numberOfSlides is 1? devision by 0
-     positions:      slidePositions,
      position,
      speed:          speedAndDirectionTracking.speed,
      relativeSlide:  ensureIndexInBounds(currentIdx),
      absoluteSlide:  currentIdx,
      size:           numberOfSlides,
-     ...strategy.getDetails(),
+     ...strategy.getDetails({ progress }),
    }
  }
  // The logic in this function does not seem quite right, it seems to wrongly decide between

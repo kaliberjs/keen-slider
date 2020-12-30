@@ -40,24 +40,33 @@ export function FixedWidthSlides(container, {
     maxPosition,
     trackLength,
     calculateIndexPosition,
-    calculateSlidePositions,
     calculateIndex,
     calculateIndexTrend,
     getDetails,
     hasSlideSizeStragy: true,
     getSizeStyle,
     hasSlidePositionStragy: true,
+    calculateSlidePositions,
     getSlidePosition,
   }
 
-  // hmmm, this has to move out. It's greatly tied to the way slides are represented.
-  // This library provides great freedom in how slides are represented, the different types of
-  // slides require different approaches:
-  // - number of slides requires people to use the 'details' to position stuff themselves
-  // - slides from html elements uses this method. And here we could imagine a different approach
-  //   using slides that have different sizes for example. Instead of giving them a size we could
-  //   read their size
-  // Anyway, it would be helpful if these 'strategies' could be plugged in
+  function getDetails({ progress }) {
+    const positions = calculateSlidePositions(progress)
+    return { slidesPerView, widthOrHeight, positions }
+  }
+
+  function calculateIndexTrend(position) {
+    return position / sizePerSlide
+  }
+
+  function calculateIndex(position) {
+    return Math.round(calculateIndexTrend(position))
+  }
+
+  function getSizeStyle() {
+    return `calc(${100 / slidesPerView}% - ${visibleSpacing}px)`
+  }
+
   function calculateSlidePositions(progress) {
     // todo - option for not calculating slides that are not in sight
     const slidePositions = []
@@ -85,22 +94,6 @@ export function FixedWidthSlides(container, {
       })
     }
     return slidePositions
-  }
-
-  function getDetails() {
-    return { slidesPerView, widthOrHeight }
-  }
-
-  function calculateIndexTrend(position) {
-    return position / sizePerSlide
-  }
-
-  function calculateIndex(position) {
-    return Math.round(calculateIndexTrend(position))
-  }
-
-  function getSizeStyle() {
-    return `calc(${100 / slidesPerView}% - ${visibleSpacing}px)`
   }
 
   function getSlidePosition(idx, { distance }) {
