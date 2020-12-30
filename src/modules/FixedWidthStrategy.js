@@ -34,11 +34,11 @@ export function FixedWidthSlides(container, {
   const origin          = centered
     ? (widthOrHeight / 2 - sizePerSlide / 2) / widthOrHeight
     : 0
-  // what is the difference between maxPosition and trackLength? They should be related
+  // TODO: what is the difference between maxPosition and trackLength? They should be related
   const maxPosition     = (widthOrHeight * numberOfSlides) / slidesPerView
   const trackLength     = (
     widthOrHeight * (
-      numberOfSlides - 1 /* <- check if we need parentheses here */ * (centered ? 1 : slidesPerView)
+      numberOfSlides - 1 /* TODO <- check if we need parentheses here (ask the author) */ * (centered ? 1 : slidesPerView)
     )
   ) / slidesPerView
 
@@ -74,7 +74,7 @@ export function FixedWidthSlides(container, {
   }
 
   function calculateSlidePositions(progress) {
-    // todo - option for not calculating slides that are not in sight
+    // TODO - option for not calculating slides that are not in sight (This TODO is from the original author)
     const slidePositions = []
     const normalizedrogress = progress < 0 && isLoop ? progress + 1 : progress
     for (let idx = 0; idx < numberOfSlides; idx++) {

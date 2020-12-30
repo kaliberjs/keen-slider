@@ -90,7 +90,7 @@ export function BaseSlider(container, options, fireEvent) {
   }
 
   function sliderInit() {
-    if (!container) return // this should probably throw an error, but there might be a use case, not sure
+    if (!container) return // TODO: this should probably throw an error, but there might be a use case, not sure (check with author)
 
     sliderResize()
 

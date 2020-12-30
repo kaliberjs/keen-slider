@@ -83,7 +83,7 @@ export function Track({ options, onIndexChanged, onMove }) {
      progress,
    }
  }
- // The logic in this function does not seem quite right, it seems to wrongly decide between
+ // TODO: The logic in this function does not seem quite right, it seems to wrongly decide between
  // left and right by comparing (the normalized) idx to the current position
  function getRelativeIdx(idx, nearest) {
    const relativeIdx = ensureIndexInBounds(idx) // here we lose the direction
@@ -123,7 +123,7 @@ function SpeedAndDirectionTracking() {
   }
 
   function measure(val, timeStamp) {
-    // todo - improve measurement - it could be better for ios
+    // TODO - improve measurement - it could be better for ios (Note to self: ask what the author had in mind)
     clearTimeout(measureTimeout)
 
     const newDirection = Math.sign(val)
@@ -151,7 +151,7 @@ function SpeedAndDirectionTracking() {
 
   function reset() {
     measurePoints = []
-    // should we reset the speed and direction as well?
+    // TODO: should we reset the speed and direction as well?
   }
 
   function determineSpeed(measurePoints) {

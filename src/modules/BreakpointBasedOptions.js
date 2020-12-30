@@ -42,7 +42,7 @@ export function BreakpointBasedOptions({ initialOptions, breakpoints = [], onOpt
   }
 
   function handleResize() {
-    // checking if a breakpoint matches should not be done on resize, but as a listener to matchMedia
+    // TODO: checking if a breakpoint matches should not be done on resize, but as a listener to matchMedia
     if (optionsWrapper.refresh().optionsChanged) {
       onOptionsChanged(optionsWrapper.options)
     }

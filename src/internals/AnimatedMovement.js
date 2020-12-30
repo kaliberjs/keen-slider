@@ -29,12 +29,14 @@ export function AnimatedMovement({ options, track, onMovementComplete, onMovemen
          onMovementComplete()
        },
        onMove: ({ delta, stop }) => {
-         // The 'stop' variants only occur in certain scenario's, we should eventually find a way
+         // TODO: The 'stop' variants only occur in certain scenario's, we should eventually find a way
          // figure out which scenario's. That would allow us to run all animations to completion
          // unless they actually need to be canceled.
          //
          // To my naive brain it does not make sense to start an animation and decide midway:
          // "oops, we should actually do something else"
+         //
+         // See Animation for more related comments
          const offset = track.calculateOutOfBoundsOffset(delta)
          const isOutOfBounds = offset !== 0
 
@@ -59,7 +61,7 @@ export function AnimatedMovement({ options, track, onMovementComplete, onMovemen
    }
 
    function moveRubberband(speed) {
-     // todo: refactor! working on it
+     // TODO: refactor! working on it (I should actually ask what 'refactor!' means, what does he have in mind?)
      const friction = 0.04 / Math.pow(Math.abs(speed), -0.5)
      const distance = (Math.pow(speed, 2) / friction) * Math.sign(speed)
 

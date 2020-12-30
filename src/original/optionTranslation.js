@@ -1,4 +1,4 @@
-import { clampValue, getElements } from '../machinery'
+import { getElements } from '../machinery'
 import { FixedWidthSlides } from '../modules/FixedWidthStrategy'
 
 export function renameOptions({
@@ -28,7 +28,7 @@ export function renameOptions({
 export function dragSpeedToTouchMultiplicator(publicApi) {
   return ({ dragSpeed }, { isRtl }) => {
     const dragSpeedMultiplicator = typeof dragSpeed === 'function'
-      ? val => dragSpeed(val, publicApi) // We should deprecate passing the public API here
+      ? val => dragSpeed(val, publicApi) // TODO: We should deprecate passing the public API here
       : val => val * dragSpeed
 
     return {

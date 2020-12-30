@@ -97,7 +97,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
     }
   )
 
-  // This should probably be handled differently. The whole resize thing needs to be thought about
+  // TODO: This should probably be handled differently. The whole resize thing needs to be thought about
   // it seems to not make sense to check for window resize, we should probably monitor the container
   // or the slides. Anyway - food for thought - maybe resize handling should be part of the strategy
   const resizeHandling = ResizeHandling({ onResize: resize })
@@ -144,7 +144,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
   }
 
   function resize() {
-    // It feels a bit weird to do this, while it is similar to the original behavior, we should
+    // TODO: It feels a bit weird to do this, while it is similar to the original behavior, we should
     // probably (in the final version) make this controllable. The question is: when will those
     // dynamic options need to be refreshed?
     //

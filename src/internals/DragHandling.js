@@ -61,7 +61,7 @@ export function DragHandling({
 
   function moveSnapOne() {
     const direction = track.direction
-    // hmm, this below should be refined. If we drag past the start index, stop moving and release, it should snap to
+    // TODO: hmm, this below should be refined. If we drag past the start index, stop moving and release, it should snap to
     // the nearest index of the start, the direction could be calculated by the position relative to the starting index
     const startIndex = direction !== 0
         ? touchIndexStart
@@ -70,7 +70,7 @@ export function DragHandling({
   }
 
   function moveFree() {
-    // todo: refactor! working on it
+    // TODO: refactor! working on it (Note to self: ask the author what he has in mind)
     const speed = track.speed
     if (speed === 0) {
       const isOutOfBounds = track.calculateOutOfBoundsOffset(0) !== 0
@@ -171,7 +171,7 @@ function TouchHandling(container, options, {
     if (!isDragging || touchIdentifier !== eventGetIdentifier(e.changedTouches)) return
     isDragging = false
 
-    // should we clear clientTouchPoints?
+    // TODO: should we clear clientTouchPoints?
 
     onDragStop({ timeStamp: e.timeStamp })
   }
