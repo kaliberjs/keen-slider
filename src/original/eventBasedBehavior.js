@@ -43,16 +43,17 @@ export function dragAttributeOnContainer(container) {
 }
 
 /**
- * @param {OptionsType & { slides: Array<HTMLElement> }} options
+ * @param {object} props
+ * @param {HtmlSlideSizeStrategy} props.strategy
+ * @param {Array<HTMLElement>} props.slides
+ * @param {boolean} props.isVerticalSlider
  * @returns {Events}
  */
-export function setSlideSizes({ slides, strategy, isVerticalSlider }) {
+export function setSlideSizes({ strategy, slides, isVerticalSlider }) {
   return {
     sliderResize(info) {
       const prop = isVerticalSlider ? 'height' : 'width'
       slides.forEach(slide => {
-        // TODO: we don't need to calculate the size of a slide when it is already known, that would allow slides of a different size
-        // hmm, it seems this is not really how it currently works. The number of slides, slidesPerView and container size determines this
         const style = strategy.getSizeStyle()
         writeToDOM.using(info, () => {
           slide.style[`min-${prop}`] = style
@@ -70,10 +71,13 @@ export function setSlideSizes({ slides, strategy, isVerticalSlider }) {
 }
 
 /**
- * @param {OptionsType & { slides: Array<HTMLElement> }} options
+ * @param {object} props
+ * @param {HtmlSlidePositionsStrategy} props.strategy
+ * @param {Array<HTMLElement>} props.slides
+ * @param {boolean} props.isVerticalSlider
  * @returns {Events}
  */
-export function setSlidePositions({ slides, isVerticalSlider, strategy }) {
+export function setSlidePositions({ strategy, slides, isVerticalSlider }) {
   return {
     move(info) {
       slides.forEach((slide, idx) => {

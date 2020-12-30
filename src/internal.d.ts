@@ -19,18 +19,29 @@ declare type OptionsType = {
 }
 
 declare type StrategyType = {
+  // TODO: from a naive perspective, this interface should only expose one
   maxPosition: number
   trackLength: number
-  calculateSlidePositions(progress: number): Array<SlidePositionType>
+
   calculateIndex(position: number): number
   calculateIndexTrend(position: number): number
+  calculateIndexPosition(idx: number): number
+  calculateSlidePositions(progress: number): Array<SlidePositionType>
+
+  // TODO: this should be a generic object, we could also remove this and have it as an extension of the public API for the original slider, not sure
   getDetails(): {
     slidesPerView: number
     widthOrHeight: number
   }
+}
+
+declare type HtmlSlideSizeStrategy = {
+  hasSlideSizeStragy: true
   getSizeStyle(): string
-  getSlidePosition(idx: number, slidePosition: SlidePositionType )
-  calculateIndexPosition(idx: number): number
+}
+declare type HtmlSlidePositionsStrategy = {
+  hasSlidePositionStragy: true
+  getSlidePosition(idx: number, slidePosition: SlidePositionType ): number
 }
 
 type SlidePositionType = {

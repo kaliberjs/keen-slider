@@ -2,7 +2,7 @@ const { clampValue } = require('../machinery')
 
  /**
   * @param {HTMLElement} container
-  * @returns {StrategyType}
+  * @returns {StrategyType & HtmlSlideSizeStrategy & HtmlSlidePositionsStrategy}
   */
 export function FixedWidthSlides(container, {
   spacing,
@@ -44,7 +44,9 @@ export function FixedWidthSlides(container, {
     calculateIndex,
     calculateIndexTrend,
     getDetails,
+    hasSlideSizeStragy: true,
     getSizeStyle,
+    hasSlidePositionStragy: true,
     getSlidePosition,
   }
 

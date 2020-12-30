@@ -57,11 +57,12 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
           fixedWidthSlidesStrategy(translatedContainer),
         ]
       )
+      const { slides, strategy, isVerticalSlider } = translatedOptions
       const internalEventHandler = hookIntoEvents([
         dragAttributeOnContainer(translatedContainer),
-        options.vertical         && verticalAttributeOnContainer(translatedContainer, options),
-        translatedOptions.slides && setSlideSizes(translatedOptions),
-        translatedOptions.slides && setSlidePositions(translatedOptions),
+        isVerticalSlider && verticalAttributeOnContainer(translatedContainer, options),
+        slides && strategy.hasSlideSizeStragy     && setSlideSizes(translatedOptions),
+        slides && strategy.hasSlidePositionStragy && setSlidePositions(translatedOptions),
       ].filter(Boolean))
 
       const slider = BaseSlider(
@@ -95,7 +96,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
     }
   )
 
-  // This should probably be handled differently. The whole resize think needs to be thought about
+  // This should probably be handled differently. The whole resize thing needs to be thought about
   // it seems to not make sense to check for window resize, we should probably monitor the container
   // or the slides. Anyway - food for thought - maybe resize handling should be part of the strategy
   const resizeHandling = ResizeHandling({ onResize: resize })
