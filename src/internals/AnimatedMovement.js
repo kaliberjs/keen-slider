@@ -37,6 +37,12 @@ export function AnimatedMovement({ options, track, onMovementComplete, onMovemen
          // "oops, we should actually do something else"
          //
          // See Animation for more related comments
+         //
+         // A bit more information. From what I gathered, this can only ever happen on the 'drag end'
+         // move. See `onDragStop`. At that point we know the distance so we could check if the
+         // movement will end 'out of bounds'. So using `calculateOutOfBoundsOffset` we could
+         // determine a new easing function that actually does the rubberbanding. This could probably
+         // even render `onMoveComplete` useless.
          const offset = track.calculateOutOfBoundsOffset(delta)
          const isOutOfBounds = offset !== 0
 

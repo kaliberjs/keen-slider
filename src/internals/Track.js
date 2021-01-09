@@ -85,6 +85,8 @@ export function Track({ options, onIndexChanged, onMove }) {
  }
  // TODO: The logic in this function does not seem quite right, it seems to wrongly decide between
  // left and right by comparing (the normalized) idx to the current position
+ //
+ // My gut feeling tells me we should deprecate this
  function getRelativeIdx(idx, nearest) {
    const relativeIdx = ensureIndexInBounds(idx) // here we lose the direction
    const current = ensureIndexInBounds(currentIdx)
@@ -111,9 +113,10 @@ export function Track({ options, onIndexChanged, onMove }) {
 function SpeedAndDirectionTracking() {
 
   let measurePoints = []
-  let direction
-  let measureTimeout
-  let speed
+  /** @type {-1|0|1} */
+  let direction      = 0
+  let measureTimeout = null
+  let speed          = 0
 
   return {
     measure,
@@ -138,20 +141,15 @@ function SpeedAndDirectionTracking() {
     })
     measurePoints = measurePoints.slice(-6)
 
-    measureTimeout = setTimeout(
-      () => {
-        measurePoints = []
-        speed = 0
-      },
-      50
-    )
+    measureTimeout = setTimeout(reset, 50)
 
     speed = (measurePoints.length <= 1 || direction === 0) ? 0 : determineSpeed(measurePoints)
   }
 
   function reset() {
     measurePoints = []
-    // TODO: should we reset the speed and direction as well?
+    speed = 0
+    direction = 0
   }
 
   function determineSpeed(measurePoints) {

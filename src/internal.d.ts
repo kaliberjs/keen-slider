@@ -117,3 +117,7 @@ declare type AugmentResult<S extends Tuple, U = {}> =
 declare type TranslateWaterfall<S, T extends Tuple> = (input: S, translations: T) => WaterfallResult<S, T>
 declare type TranslateComposite<S, T extends Tuple> = (input: S, translations: T) => CompositeResult<S, T>
 declare type Augment<S, T extends Tuple> = (input: S, augmentations: T) => S & AugmentResult<T>
+
+declare interface Math {
+  sign(x: number): -1 | 0 | 1;
+}

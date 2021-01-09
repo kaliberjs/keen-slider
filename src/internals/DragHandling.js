@@ -61,8 +61,9 @@ export function DragHandling({
 
   function moveSnapOne() {
     const direction = track.direction
-    // TODO: hmm, this below should be refined. If we drag past the start index, stop moving and release, it should snap to
-    // the nearest index of the start, the direction could be calculated by the position relative to the starting index
+    // TODO: hmm, this below should be refined. If we drag past the start index, stop moving and
+    // release, it should snap to the nearest index of the start, the direction could be calculated
+    // by the position relative to the starting index
     const startIndex = direction !== 0
         ? touchIndexStart
         : track.currentIdx
@@ -108,11 +109,11 @@ function TouchHandling(container, options, {
 }) {
   const { eventAdd, eventsRemove } = EventBookKeeper()
 
-  let isDragging      = false
-  let dragJustStarted = false
-  let touchIdentifier = null
-  let touchLastXOrY   = 0
-  let clientTouchPoints
+  let isDragging        = false
+  let dragJustStarted   = false
+  let touchIdentifier   = null
+  let touchLastXOrY     = 0
+  let clientTouchPoints = null
 
   return {
     startListening: eventsAdd,
@@ -171,7 +172,7 @@ function TouchHandling(container, options, {
     if (!isDragging || touchIdentifier !== eventGetIdentifier(e.changedTouches)) return
     isDragging = false
 
-    // TODO: should we clear clientTouchPoints?
+    clientTouchPoints = null
 
     onDragStop({ timeStamp: e.timeStamp })
   }
