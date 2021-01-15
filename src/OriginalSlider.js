@@ -44,6 +44,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
     (options, sliderWrapper) => {
       if (!publicApi) throw new Error(`Note to self: public API has not been created yet, please delay creating the slider`)
 
+      // TODO container should be an HTMLElement
       const translatedContainer = translateContainer(
         container, [
           resolveContainer,
@@ -59,8 +60,8 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
       )
       const { slides, strategy, isVerticalSlider } = translatedOptions
       const internalEventHandler = hookIntoEvents([
-        dragAttributeOnContainer(translatedContainer),
-        isVerticalSlider && verticalAttributeOnContainer(translatedContainer, options),
+        dragAttributeOnContainer(translatedContainer), // TODO: weg, event is genoeg
+        isVerticalSlider && verticalAttributeOnContainer(translatedContainer, options), // TODO weg
         slides && strategy.hasSlideSizeStragy     && setSlideSizes(translatedOptions),
         slides && strategy.hasSlidePositionStragy && setSlidePositions(translatedOptions),
       ].filter(Boolean))
@@ -76,8 +77,8 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
 
       const augmentedSlider = augmentPublicApi(
         slider, [
-          controlsApi({ optionsWrapper, sliderWrapper }),
-          refreshApi({ optionsWrapper, sliderWrapper, initialOptions, convertBreakpoints }),
+          controlsApi({ optionsWrapper, sliderWrapper }), // TODO: weg
+          refreshApi({ optionsWrapper, sliderWrapper, initialOptions, convertBreakpoints }), // TODO: weg
           detailsFromStrategy({ strategy, slider }),
         ]
       )
@@ -86,6 +87,7 @@ export function OriginalSlider(container, { breakpoints, ...options } = {}) {
     }
   )
 
+  // TODO: remove
   const optionsWrapper = BreakpointBasedOptions(
     {
       initialOptions,

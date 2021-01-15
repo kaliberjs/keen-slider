@@ -3,14 +3,14 @@ declare type OptionsType = {
   numberOfSlides: number
 
   isLoop: boolean
-  isRubberband: boolean
+  isRubberband: boolean // TODO misschien functie, meer invloed op 1. drag-resistance 2. bounce back animatie
   isVerticalSlider: boolean
 
   isDragEnabled: boolean
-  isDragCancelledOnLeave: boolean
-  preventTouchAttributeName: string
+  isDragCancelledOnLeave: boolean // TODO: even kijken uit welke use case dit kwam
+  preventTouchAttributeName: string // TODO: kan theoretisch weg door `stopPropagation` te gebruiken, voorbeeld: video in slide waar je in slepen in dat balkie onderaan (scrubber)
   dragEndMove: 'snap' | 'free-snap' | 'free'
-  touchMultiplicator(val: number): number
+  touchMultiplicator(val: number): number // TODO sensible default: val => val
 
   defaultDuration: number
   defaultFriction: number
