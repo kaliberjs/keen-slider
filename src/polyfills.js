@@ -1,3 +1,4 @@
+// TODO: do we need this polyfill?
 if (!Math.sign) {
   // @ts-ignore
   Math.sign = function (x) {

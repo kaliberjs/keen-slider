@@ -1,3 +1,36 @@
+declare type PublicOptionsType = {
+  /** @default 0 */
+  initialIndex?: number
+
+  /** @default false  */ vertical?:            boolean
+  /** @default true   */ dragEnabled?:         boolean
+  /** @default false  */ cancelDragOnLeave?:   boolean
+  /** @default 'free' */ dragEndMove?:         'snap' | 'free-snap' | 'free'
+  touchMultiplicator?: (delta: number) => number
+
+  /** @default 500    */ defaultDuration?: number
+  /** @default 0.0025 */ defaultFriction?: number
+
+  /** @default false */ loop?: boolean
+  /** @default false */ rubberband?: boolean
+} & (
+  { loop: false, rubberband: boolean } |
+  { loop: true , rubberband: false   }
+) & (
+  { numberOfSlides: number } |
+  { slides: Array<HTMLElement> }
+)
+
+declare type PublicFixedWidthOptionsType = {
+  /** @default true */
+  centered?:       boolean
+  /** @default 0 */
+  spacing?:        number
+  /** @default 1 */
+  slidesPerView?:  number
+}
+
+// TODO: this should probably not differ from the public options
 declare type OptionsType = {
   initialIndex: number
   numberOfSlides: number
@@ -8,7 +41,6 @@ declare type OptionsType = {
 
   isDragEnabled: boolean
   isDragCancelledOnLeave: boolean // TODO: even kijken uit welke use case dit kwam
-  preventTouchAttributeName: string // TODO: kan theoretisch weg door `stopPropagation` te gebruiken, voorbeeld: video in slide waar je in slepen in dat balkie onderaan (scrubber)
   dragEndMove: 'snap' | 'free-snap' | 'free'
   touchMultiplicator(val: number): number // TODO sensible default: val => val
 
@@ -68,6 +100,7 @@ declare interface InternalKeenSliderType {
   prev(): void
 
   moveToSlide(idx: number, duration?: number): void
+  // TODO: Discuss with Joost and Peeke, I think this can be removed
   moveToSlideRelative(relativeIdx: number, nearest?: boolean, duration?: number): void
 
   readonly details: Details
@@ -75,16 +108,13 @@ declare interface InternalKeenSliderType {
 
 declare type EventHandler<T = {}> = (info: { currentlyInAnimationFrame: boolean } & T) => void
 declare type Events = {
-  afterChange?: EventHandler
-  beforeChange?: EventHandler
-  dragStart?: EventHandler
-  firstDrag?: EventHandler
-  dragEnd?: EventHandler
-  mounted?: EventHandler
-  unmounted?: EventHandler
-  move?: EventHandler<{ progress: number }>
-  slideChanged?: EventHandler<{ newIndex: Number }>
-  sliderResize?: EventHandler
+  onDragStart?: EventHandler
+  onFirstDrag?: EventHandler
+  onDragEnd?: EventHandler
+  onMove?: EventHandler<{ progress: number }>
+  onSlideChange?: EventHandler<{ newIndex: number }>
+  onSliderResize?: EventHandler
+  onDestroy?: EventHandler
 }
 declare type EventInfo<T extends keyof Events> = Parameters<Events[T]>[0]
 

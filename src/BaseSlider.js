@@ -28,10 +28,10 @@ export function BaseSlider(container, options, fireEvent) {
   const { readOnly: track, ...trackManipulation } = Track({
     options,
     onIndexChanged({ newIndex, currentlyInAnimationFrame }) {
-      fireEvent('slideChanged', { newIndex, currentlyInAnimationFrame })
+      fireEvent('onSlideChange', { newIndex, currentlyInAnimationFrame })
     },
     onMove({ progress, currentlyInAnimationFrame }) {
-      fireEvent('move', { progress, currentlyInAnimationFrame })
+      fireEvent('onMove', { progress, currentlyInAnimationFrame })
     }
   })
   const animatedMovement = AnimatedMovement({
@@ -39,27 +39,23 @@ export function BaseSlider(container, options, fireEvent) {
     onMovement(distance) {
       measureAndMove(distance, { currentlyInAnimationFrame: true })
     },
-    onMovementComplete() {
-      fireEvent('afterChange', { currentlyInAnimationFrame: true })
-    }
   })
   const dragHandling = options.isDragEnabled && DragHandling({
     container, options, track,
     onDragStart({ timeStamp }) {
       animatedMovement.cancel()
       trackManipulation.measureSpeedAndDirection(0, timeStamp) // does this even make sense? Seems we reset it on first drag
-      fireEvent('dragStart', { currentlyInAnimationFrame: false })
+      fireEvent('onDragStart', { currentlyInAnimationFrame: false })
     },
     onFirstDrag() {
       trackManipulation.resetSpeedAndDirectionTracking()
-      fireEvent('firstDrag', { currentlyInAnimationFrame: false })
+      fireEvent('onFirstDrag', { currentlyInAnimationFrame: false })
     },
     onDrag({ distance, timeStamp }) {
       measureAndMove(distance, { timeStamp, currentlyInAnimationFrame: false }) // note: was `drag: e.timeStamp`
     },
     onDragStop({ moveTo: { distance, duration } }) {
       if (distance) {
-        fireEvent('beforeChange', { currentlyInAnimationFrame: false })
         animatedMovement.moveTo({
           distance,
           duration,
@@ -67,7 +63,7 @@ export function BaseSlider(container, options, fireEvent) {
         })
       }
 
-      fireEvent('dragEnd', { currentlyInAnimationFrame: false })
+      fireEvent('onDragEnd', { currentlyInAnimationFrame: false })
     }
   })
 
@@ -90,27 +86,20 @@ export function BaseSlider(container, options, fireEvent) {
   }
 
   function sliderInit() {
-    if (!container) return // TODO: this should probably throw an error, but there might be a use case, not sure (check with author)
-
     sliderResize()
 
     if (dragHandling) dragHandling.startListening()
-
-    fireEvent('mounted', { currentlyInAnimationFrame: false })
   }
 
   function sliderDestroy() {
     if (dragHandling) dragHandling.stopListening()
-
-    fireEvent('unmounted', { currentlyInAnimationFrame: false })
+    fireEvent('onDestroy', { currentlyInAnimationFrame: false })
   }
 
   function sliderResize() {
-    fireEvent('sliderResize', { currentlyInAnimationFrame: false })
+    fireEvent('onSliderResize', { currentlyInAnimationFrame: false })
 
-    fireEvent('beforeChange', { currentlyInAnimationFrame: false })
     measureAndMove(track.currentIndexDistance, { currentlyInAnimationFrame: false })
-    fireEvent('afterChange', { currentlyInAnimationFrame: false })
   }
 
   function measureAndMove(delta, { timeStamp = Date.now(), currentlyInAnimationFrame }) {

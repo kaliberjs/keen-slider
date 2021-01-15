@@ -2,42 +2,16 @@ export function clampValue(value, min, max) {
   return Math.min(Math.max(value, min), max)
 }
 
-/** @returns {Array<HTMLElement>} */
-export function getElements(element, wrapper) {
-  return (
-    typeof element === 'function'  ? convertToArray(element()) : // TODO: This option is probably for a specific use case, it should be removed as it makes things a lot more complicated (ask author)
-    typeof element === 'string'    ? convertToArray(wrapper.querySelectorAll(element)) :
-    element instanceof HTMLElement ? [element] :
-    element instanceof NodeList    ? convertToArray(element) :
-    []
+export function mergeEventHandlers(base, ...eventHandlers) {
+  return eventHandlers.reduce(
+    (result, x) => Object.entries(x).reduce(
+      (result, [event, handler]) => result[event]
+        ? (...args) => { result[event](...args); handler(...args) }
+        : handler,
+      result
+    ),
+    base
   )
-}
-
-/** @param {NodeList} nodeList
- *  @returns {Array<HTMLElement>} */
-function convertToArray(nodeList) {
-  return Array.prototype.slice.call(nodeList)
-}
-
-/** @template {Tuple & Array} S, T
- *  @type {TranslateWaterfall<T, S>} */
-export function translateContainer(input, translations) {
-  return translations.reduce((result, x) => x(result), input)
-}
-
-/** @template {Tuple & Array} S, T
- *  @type {TranslateComposite<T, S>} */
-export function translateOptions(input, translations) {
-  return translations.reduce(
-    (result, x) => ({ ...result, ...x(input, result) }),
-    {}
-  )
-}
-
-/** @template {Tuple & Array} S, T
- *  @type {Augment<T, S>} */
-export function augmentPublicApi(input, augmentations) {
-  return augmentations.reduce((result, x) => ({ ...result, ...x }), input)
 }
 
 export function EventBookKeeper() {

@@ -2,11 +2,10 @@
  * @param {{
   *   options: OptionsType,
   *   track: ReturnType<import('./Track').Track>['readOnly'],
-  *   onMovementComplete(): void,
   *   onMovement(distance: number): void,
   * }} params
   */
-export function AnimatedMovement({ options, track, onMovementComplete, onMovement }) {
+export function AnimatedMovement({ options, track, onMovement }) {
    const animation = Animation()
 
    return {
@@ -26,7 +25,6 @@ export function AnimatedMovement({ options, track, onMovementComplete, onMovemen
        onMoveComplete: ({ moved }) => {
          onMovement(distance - moved)
          if (onMoveComplete) return onMoveComplete()
-         onMovementComplete()
        },
        onMove: ({ delta, stop }) => {
          // TODO: The 'stop' variants only occur in certain scenario's, we should eventually find a way

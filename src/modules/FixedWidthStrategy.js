@@ -13,7 +13,7 @@ const { clampValue } = require('../machinery')
 export function FixedWidthSlides(container, {
   spacing,
   slidesPerView: slidesPerViewOption, numberOfSlides,
-  isLoop, rtl, centered, isVerticalSlider
+  isLoop, centered, isVerticalSlider
 }) {
   const slidesPerView = typeof slidesPerViewOption === 'function'
     ? slidesPerViewOption()
@@ -96,7 +96,7 @@ export function FixedWidthSlides(container, {
       )
       slidePositions.push({
         portion: portion < 0 || portion > 1 ? 0 : portion,
-        distance: !rtl ? distance : distance * -1 + 1 - slideFactor
+        distance
       })
     }
     return slidePositions
